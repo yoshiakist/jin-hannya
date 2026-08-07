@@ -201,6 +201,21 @@ body {
   text-indent: 1em;
 }
 
+/* ルビ。縦組みでは親文字の右へ回る。行間（2.15）の内側に収まる大きさに留めて、
+   ルビの有無で行の高さが変わらないようにする */
+.overlay__doc ruby {
+  ruby-position: over;
+  ruby-align: center;
+}
+
+.overlay__doc rt {
+  font-size: 0.5em;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  /* 本文よりわずかに退かせる。読みの補助であって本文ではない */
+  color: var(--text-dim);
+}
+
 /* --- 現在位置インジケータ --------------------------------------------------- */
 
 .breadcrumb {

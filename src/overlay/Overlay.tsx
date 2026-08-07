@@ -22,6 +22,7 @@ import { overlayInsets, DOC_EDGE_PX } from '../world/node-layout.ts'
 import { nodePanXAtom, nodePanRangeAtom, resetNodePanAtom, unitsPerPixel } from '../world/pan.ts'
 import { VIEW_HEIGHT } from '../world/paper.ts'
 import { labelText, type GraphNode } from '../content/schema.ts'
+import { parseRuby } from '../content/ruby.ts'
 import { APPEAR_DELAY_MS } from '../scene/Transition.tsx'
 import { SpeakButton } from './SpeakButton.tsx'
 import { AudioControls } from './AudioControls.tsx'
@@ -136,7 +137,7 @@ export function Overlay() {
             transition={{ duration: 0.5, delay: APPEAR_DELAY_S + 0.12 }}
           >
             {doc.body.split(/\n{2,}/).map((paragraph, i) => (
-              <p key={i}>{paragraph}</p>
+              <p key={i}>{renderRuby(paragraph)}</p>
             ))}
           </motion.div>
         )}
@@ -144,6 +145,25 @@ export function Overlay() {
 
       <LeftArrow />
     </div>
+  )
+}
+
+/**
+ * 段落の `菩薩《ぼさつ》` を `<ruby>` に組み替える。
+ *
+ * 縦組み（`writing-mode: vertical-rl`）でも `<ruby>` はブラウザが親文字の右に流してくれるので、
+ * 位置合わせは CSS に任せて字面だけ渡す。
+ */
+function renderRuby(paragraph: string) {
+  return parseRuby(paragraph).map((part, i) =>
+    typeof part === 'string' ? (
+      part
+    ) : (
+      <ruby key={i}>
+        {part.base}
+        <rt>{part.ruby}</rt>
+      </ruby>
+    ),
   )
 }
 
