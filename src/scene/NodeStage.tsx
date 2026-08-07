@@ -39,6 +39,8 @@ const HEADLINE_SINGLE_COLUMN_MAX = 7
 
 /** 画面右端の大書の中心 x。ワールド単位 */
 const HEADLINE_X = VIEW_HEIGHT * 0.60
+/** 大書の行間（列の送り）。1 字の大きさに対する倍率 */
+const HEADLINE_COLUMN_PITCH = 1.38
 
 export interface HeadlineLayout {
   /** 読む順（右の列の上から、左の列の下へ）に並べた字 */
@@ -83,7 +85,7 @@ export function headlineLayout(label: string): HeadlineLayout {
     // 列は上で揃える。長さの違う列が並んでも書き出しの高さが動かない
     for (const [row, char] of column.entries()) {
       chars.push(char)
-      positions.push([HEADLINE_X - index * size * 1.15, top - row * size, 0])
+      positions.push([HEADLINE_X - index * size * HEADLINE_COLUMN_PITCH, top - row * size, 0])
     }
   })
   return { chars, positions, size }
