@@ -1,7 +1,8 @@
 /**
  * L0 — 写経の紙面。
  *
- * 全文を 16 文字改行の均質な格子として描く。意味による分節はしない。
+ * 全文を均質な格子として描く。列の切れ目は `content/sutra.txt` の改行位置に従い、
+ * 意味による分節はしない（改行はあくまで底本の版面であって、句の区切りではない）。
  * 触れたときだけ、句の範囲にあたる文字が光る（README「意味の区切りは L1 から」）。
  */
 
@@ -11,7 +12,7 @@ import { useAtomValue, useSetAtom } from 'jotai'
 import { InstancedBufferAttribute, InstancedMesh, Object3D } from 'three'
 import { MeshBasicNodeMaterial } from 'three/webgpu'
 import { attribute, mix, uniform, vec3 } from 'three/tsl'
-import { SUTRA_CHARS, COLS_PER_LINE } from '../content/sutra.ts'
+import { SUTRA_CHARS, COLS_PER_LINE, GRID_COLUMNS, indexAt } from '../content/sutra.ts'
 import { glyphGeometry } from './glyphs.ts'
 import { INK, INK_RESTING, FOCUS } from './materials.ts'
 import { CELL_X, CELL_Y, gridPosition } from '../world/paper.ts'
@@ -73,28 +74,23 @@ function HoverPlane({ indexToNode }: { indexToNode: (string | null)[] }) {
   const dispatch = useSetAtom(navAtom)
   const accepts = useAtomValue(acceptsInputAtom)
 
-  const columns = Math.ceil(SUTRA_CHARS.length / COLS_PER_LINE)
+  const columns = GRID_COLUMNS
   const width = columns * CELL_X
   const height = COLS_PER_LINE * CELL_Y
 
-  const indexAt = (x: number, y: number): number | null => {
-    const column = Math.round(-x / CELL_X)
-    const row = Math.round((COLS_PER_LINE - 1) / 2 - y / CELL_Y)
-    if (column < 0 || column >= columns) return null
-    if (row < 0 || row >= COLS_PER_LINE) return null
-    const index = column * COLS_PER_LINE + row
-    return index < SUTRA_CHARS.length ? index : null
-  }
+  /** ワールド座標 → 格子 → 字。行末より下の空き升は `null` になる */
+  const indexUnder = (x: number, y: number): number | null =>
+    indexAt(Math.round(-x / CELL_X), Math.round((COLS_PER_LINE - 1) / 2 - y / CELL_Y))
 
   const onPointerMove = (event: ThreeEvent<PointerEvent>) => {
     if (!accepts) return
-    const index = indexAt(event.point.x, event.point.y)
+    const index = indexUnder(event.point.x, event.point.y)
     dispatch({ type: 'hover', id: index === null ? null : (indexToNode[index] ?? null) })
   }
 
   const onClick = (event: ThreeEvent<MouseEvent>) => {
     if (!accepts) return
-    const index = indexAt(event.point.x, event.point.y)
+    const index = indexUnder(event.point.x, event.point.y)
     const id = index === null ? null : indexToNode[index]
     if (id) dispatch({ type: 'enter', id })
   }

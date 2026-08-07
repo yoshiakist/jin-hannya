@@ -43,8 +43,8 @@ assets/     svg/(筆文字118) pattern/circle.svg bgm/ sfx/ voice/(未収録)
 ## 触るときの固定事項
 
 - **経文本文・解説文をコードや README、コミットメッセージに複製しない。** 出所は `content/graph/*.yaml` の `summary` と `content/docs/*.md` だけ。
-- **`COLS_PER_LINE = 16`**（`src/content/sutra.ts`）。README 本文の 1 箇所に `= 6` と書かれた誤記があるが、16 が正。
-- `content/sutra.txt` は**文字インデックスの唯一の基準**。ローダが空白を除去して正規形を作り、`range` はその正規形に対する半開区間 `[start, end)`。文字の増減は全 `range` の見直しとセット。
+- **`COLS_PER_LINE = 16`**（`src/content/sutra.ts`）は 1 列に収まる字数の**上限**。L0 の列の切れ目は `content/sutra.txt` の**改行位置**に従う（1 行 = 1 列、20 列）。格子座標は割り算で求めず `GRID_CELLS` / `cellOf()` / `indexAt(column, row)` を引く。
+- `content/sutra.txt` は**文字インデックスの唯一の基準**。ローダが空白を除去して正規形を作り、`range` はその正規形に対する半開区間 `[start, end)`。文字の増減は全 `range` の見直しとセット。行の追加・移動は `range` を動かさないが紙面の見え方を変える。
 - **ランタイムで SVG を触らない。** メッシュと粒子サンプルはビルド時に `scripts/build-glyphs.ts` が前計算する。
 - 用語を混ぜない: **深度** `L0/L1/L2…`（ユーザーの階層）と **性能ティア** `Tier 1(WebGPU)/2(WebGL2)/3(WebGL不可)`（描画能力）。「Tier」は性能の話にのみ使う。
 - 遷移は相を持つ FSM（`idle → hovered → zooming-in → focused → zooming-out`）。`zooming-*` の間は入力を殺す。

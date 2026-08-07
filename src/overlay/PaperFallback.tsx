@@ -8,7 +8,7 @@
 
 import { useMemo } from 'react'
 import { useAtomValue, useSetAtom } from 'jotai'
-import { SUTRA_CHARS, COLS_PER_LINE } from '../content/sutra.ts'
+import { SUTRA_CHARS, cellOf } from '../content/sutra.ts'
 import { navAtom, acceptsInputAtom } from '../nav/atoms.ts'
 import { root, childrenOf } from '../content/loader.ts'
 
@@ -27,12 +27,11 @@ export function PaperFallback() {
     return table
   }, [])
 
-  /** 16 文字で機械的に折り返す。意味による分節はしない */
+  /** 列の切れ目は sutra.txt の改行位置。Paper.tsx と同じ格子を DOM でも組む */
   const columns = useMemo(() => {
     const out: { index: number; char: string }[][] = []
     SUTRA_CHARS.forEach((char, index) => {
-      const column = Math.floor(index / COLS_PER_LINE)
-      ;(out[column] ??= []).push({ index, char })
+      ;(out[cellOf(index).column] ??= []).push({ index, char })
     })
     return out
   }, [])
