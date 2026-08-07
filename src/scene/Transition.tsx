@@ -31,7 +31,13 @@ import { gridPosition, GLYPH_SIZE } from '../world/paper.ts'
 import { labelText, type GraphNode } from '../content/schema.ts'
 
 /** 遷移演出の尺（ミリ秒）。ふんわりと滑らかに接続する */
-export const TRANSITION_MS = 900
+export const TRANSITION_MS = 1700
+
+/**
+ * 演出が終わってから、字とオーバーレイが現れ始めるまでの間（ミリ秒）。
+ * 着地を見せきってから次の面を出す。DOM 側（`Overlay.tsx`）も同じ値から遅延を引く。
+ */
+export const APPEAR_DELAY_MS = 500
 
 /** 画面上の字 1 つ。粒子の出所にも、持ち越しの出発点・行き先にもなる */
 interface StageGlyph extends ParticleSource {
@@ -110,7 +116,9 @@ function carryPairs(before: StageGlyph[], after: StageGlyph[], pivot: string | n
  * 同じカーブで動かさないと、ワールド座標では滑らかでも画面上では字が寄り道して見える。
  */
 export function ease(t: number): number {
-  return t * t * (3 - 2 * t)
+  // 5 次（smootherstep）。3 次と違って両端で加速度も 0 になるので、動き出しに角が立たず、
+  // 終わりはぐっと減速しながら行き先へ着地する
+  return t * t * t * (t * (t * 6 - 15) + 10)
 }
 
 /**
@@ -141,7 +149,8 @@ function glyphFade(t: number): number {
  * 演出の終わりで瞬間的に入れ替わる。ここが `stageOpacity`（materials.ts）を毎フレーム進め、
  * 墨・滲み・枠線のシェーダにまとめて効かせる。粒子と同じく**潜ると戻るで非対称**：
  *   消える … 2 乗のカーブ（`glyphFade`）で素早く引く。あとに残るのは粒子だけになる
- *   現れる … 立ち上がりの速い 2 乗のカーブ。凝集しきった粒子と入れ替わるので、間を作らない
+ *   現れる … `APPEAR_DELAY_MS` だけ待ってから、立ち上がりの速い 2 乗のカーブで出す。
+ *            持ち越しの字が着地したのを見せきってから、周りが追って現れる
  *
  * 持ち越される字だけはこの出入りに乗らない（`carryOpacity`）。遷移のあいだは Transition が
  * 動かしながら描くので伏せ、差し替わった瞬間に不透明のまま引き継ぐ。
@@ -173,10 +182,11 @@ export function StageFade() {
       // 持ち越しの字は Transition が描いているので、こちら側では伏せる
       carryOpacity.value = 0
     } else {
-      const u = Math.min(1, elapsed / APPEAR_MS)
-      stageOpacity.value = 1 - (1 - u) * (1 - u)
-      // 行き先の位置にもう置き換わっている。改めて現れさせず、そのまま引き継ぐ
+      // 行き先の位置にもう置き換わっている。改めて現れさせず、そのまま引き継ぐ。
+      // 待っているあいだ画面に残るのはこの字だけになる
       carryOpacity.value = 1
+      const u = Math.min(1, Math.max(0, elapsed - APPEAR_DELAY_MS) / APPEAR_MS)
+      stageOpacity.value = 1 - (1 - u) * (1 - u)
       if (u >= 1) {
         step.current = null
         setCarriedNodeId(null)

@@ -17,6 +17,7 @@ import {
   acceptsInputAtom,
 } from '../nav/atoms.ts'
 import { labelText } from '../content/schema.ts'
+import { APPEAR_DELAY_MS } from '../scene/Transition.tsx'
 import { SpeakButton } from './SpeakButton.tsx'
 import { AudioControls } from './AudioControls.tsx'
 import { LeftArrow } from './LeftArrow.tsx'
@@ -26,6 +27,12 @@ import { LeftArrow } from './LeftArrow.tsx'
  * AnimatePresence は既定（sync）で使う。mode="wait" にすると退場の完了を待つぶん
  * 表示が遅れ、続けて潜ったときにブロックが出てこないことがある。
  */
+/**
+ * テキストが現れ始めるまでの間（秒）。GPU レイヤーの字と同じだけ待たせる。
+ * 退場には効かせない（退場は演出の開始と同時に引いてよい）。
+ */
+const APPEAR_DELAY_S = APPEAR_DELAY_MS / 1000
+
 export function Overlay() {
   const node = useAtomValue(currentNodeAtom)
   const doc = useAtomValue(currentDocAtom)
@@ -46,8 +53,8 @@ export function Overlay() {
             className="overlay__reading"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.45 }}
+            exit={{ opacity: 0, transition: { duration: 0.45, delay: 0 } }}
+            transition={{ duration: 0.45, delay: APPEAR_DELAY_S }}
           >
             <p className="reading">{node.reading}</p>
             {node.sanskrit && (
@@ -67,8 +74,8 @@ export function Overlay() {
             className="overlay__summary"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.45, delay: 0.08 }}
+            exit={{ opacity: 0, transition: { duration: 0.45, delay: 0 } }}
+            transition={{ duration: 0.45, delay: APPEAR_DELAY_S + 0.08 }}
           >
             <p>{node.summary}</p>
           </motion.div>
@@ -82,8 +89,8 @@ export function Overlay() {
             className="overlay__doc"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.5, delay: 0.12 }}
+            exit={{ opacity: 0, transition: { duration: 0.5, delay: 0 } }}
+            transition={{ duration: 0.5, delay: APPEAR_DELAY_S + 0.12 }}
           >
             {doc.body.split(/\n{2,}/).map((paragraph, i) => (
               <p key={i}>{paragraph}</p>
