@@ -23,6 +23,7 @@ import { nodePanXAtom, nodePanRangeAtom, resetNodePanAtom, unitsPerPixel } from 
 import { VIEW_HEIGHT } from '../world/paper.ts'
 import { labelText, type GraphNode } from '../content/schema.ts'
 import { parseRuby } from '../content/ruby.ts'
+import { parseBlocks } from '../content/blocks.ts'
 import { APPEAR_DELAY_MS } from '../scene/Transition.tsx'
 import { SpeakButton } from './SpeakButton.tsx'
 import { AudioControls } from './AudioControls.tsx'
@@ -136,9 +137,17 @@ export function Overlay() {
             exit={{ opacity: 0, transition: { duration: 0.5, delay: 0 } }}
             transition={{ duration: 0.5, delay: APPEAR_DELAY_S + 0.12 }}
           >
-            {doc.body.split(/\n{2,}/).map((paragraph, i) => (
-              <p key={i}>{renderRuby(paragraph)}</p>
-            ))}
+            {parseBlocks(doc.body).map((block, i) =>
+              block.type === 'list' ? (
+                <ul key={i}>
+                  {block.items.map((item, j) => (
+                    <li key={j}>{renderRuby(item)}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p key={i}>{renderRuby(block.text)}</p>
+              ),
+            )}
           </motion.div>
         )}
       </AnimatePresence>

@@ -190,15 +190,33 @@ body {
   transform: translateX(var(--node-pan-px));
   writing-mode: vertical-rl;
   column-gap: 2.4em;
-  font-size: clamp(16px, 1.65vh, 19px);
+  font-size: clamp(18px, 1.85vh, 22px);
   line-height: 2.15;
   letter-spacing: 0.08em;
   color: var(--text);
 }
 
 .overlay__doc p {
-  margin: 0 0 1.6em;
+  margin: 0 0 1.6em 0.7em;
   text-indent: 1em;
+}
+
+/* 箇条書き。縦組みでは既定のマーカーの位置がブラウザごとに揺れるので、
+   list-style は使わず中黒を自前で出し、折り返しは親文字の頭に揃える */
+.overlay__doc ul {
+  margin: 1em 2em 1.6em;
+  padding: 0;
+  list-style: none;
+}
+
+.overlay__doc li {
+  margin-left: 0.5em;
+  padding-inline-start: 1em;
+  text-indent: -1em;
+}
+
+.overlay__doc li::before {
+  content: '・';
 }
 
 /* ルビ。縦組みでは親文字の右へ回る。行間（2.15）の内側に収まる大きさに留めて、
