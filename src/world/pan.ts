@@ -136,6 +136,43 @@ function reclamp(set: Setter): void {
 /** 左へまだ紙面が残っているか。左矢印の明滅の可否 */
 export const canPanLeftAtom = atom((get) => get(panXAtom) > get(panBoundsAtom).min + 1e-3)
 
+// --- L1 以降のパン ----------------------------------------------------------
+
+/**
+ * L1 以降は**左右にだけ**送る。拡大も縦送りも持たない（大書は紙面ではない）。
+ * 値は `nodePanX()` が出す基準の構図からのずれ（ワールド単位）。
+ *
+ * 大書と図は基準の構図に必ず収まっているので、送る先があるのは左だけ。
+ * 可動域は本文が画面の左へどれだけはみ出しているかで決まり、それは DOM の組版の結果なので、
+ * 実測した値を `nodePanRangeAtom` へ Overlay が入れる。
+ */
+const nodePanRaw = atom(0)
+const nodePanRangeRaw = atom(0)
+
+/** ワールド単位での基準からのずれ。書き込みは常に `[-range, 0]` へクランプされる */
+export const nodePanXAtom = atom(
+  (get) => get(nodePanRaw),
+  (get, set, update: number | ((previous: number) => number)) => {
+    const next = typeof update === 'function' ? update(get(nodePanRaw)) : update
+    set(nodePanRaw, Math.min(0, Math.max(-get(nodePanRangeRaw), next)))
+  },
+)
+
+/** 左へ送れる幅（ワールド単位・0 以上）。ノードや画面寸法が変わるたび Overlay が入れ直す */
+export const nodePanRangeAtom = atom(
+  (get) => get(nodePanRangeRaw),
+  (_get, set, range: number) => {
+    set(nodePanRangeRaw, Math.max(0, range))
+    // 可動域が縮んだら現在位置を新しい範囲へ入れ直す
+    set(nodePanXAtom, (x) => x)
+  },
+)
+
+/** L1 以降で左にまだ本文が残っているか。左矢印の明滅の可否 */
+export const canNodePanLeftAtom = atom(
+  (get) => get(nodePanRaw) > -get(nodePanRangeRaw) + 1e-3,
+)
+
 /** 画面 1px が何ワールド単位か。視野高が VIEW_HEIGHT / zoom に固定されているので高さから決まる */
 export function unitsPerPixel(zoom: number): number {
   return VIEW_HEIGHT / ((globalThis.innerHeight || 1) * zoom)
@@ -146,6 +183,9 @@ const WHEEL_SENSITIVITY = 0.0015
 /** トラックパッドのピンチは ctrlKey 付きの小さな delta で来るので係数を分ける */
 const PINCH_WHEEL_SENSITIVITY = 0.01
 
+/** 操作の効き方。`paper` は L0 の紙面、`node` は L1 以降の大書（左右のパンだけ） */
+export type PanMode = 'paper' | 'node'
+
 /**
  * パン・拡大操作を要素に取り付ける。
  *
@@ -155,13 +195,17 @@ const PINCH_WHEEL_SENSITIVITY = 0.01
  *
  * 拡大はカーソル（ピンチなら 2 点の中点）の下にあるワールド座標を動かさない。
  * `allowZoom` を落とすとパンだけになる（拡大に追従できない Tier 3 の紙面向け）。
+ *
+ * `mode = 'node'` では拡大も縦送りも行わず、`nodePanXAtom` を左右に動かすだけになる。
+ * L1 以降に拡大の概念が無いのと、上下は大書の高さで決め打たれているため。
  */
 export function usePanZoomGesture(
   target: React.RefObject<HTMLElement | null>,
-  enabled = true,
+  mode: PanMode = 'paper',
   allowZoom = true,
 ): void {
   const setPan = useSetAtom(panXAtom)
+  const setNodePan = useSetAtom(nodePanXAtom)
   const setPanY = useSetAtom(panYAtom)
   const setZoom = useSetAtom(zoomAtom)
   const zoom = useAtomValue(zoomAtom)
@@ -171,7 +215,8 @@ export function usePanZoomGesture(
 
   useEffect(() => {
     const element = target.current
-    if (!element || !enabled) return
+    if (!element) return
+    const nodeMode = mode === 'node'
 
     /** いま接触している指。ピンチの判定に使う */
     const pointers = new Map<number, { x: number; y: number }>()
@@ -191,7 +236,7 @@ export function usePanZoomGesture(
      * 拡大の前後で一致させるにはカメラを offset * (前 - 後) だけずらせばよい。
      */
     const zoomAt = (factor: number, clientX: number, clientY: number) => {
-      if (!allowZoom) return
+      if (!allowZoom || nodeMode) return
       const before = zoomRef.current
       const after = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, before * factor))
       if (after === before) return
@@ -206,6 +251,11 @@ export function usePanZoomGesture(
 
     /** 紙面を掴んで動かす感覚にする。指の向きと紙面の向きを一致させる */
     const panBy = (dx: number, dy: number) => {
+      if (nodeMode) {
+        // L1 以降は等倍固定。左右だけ送る
+        setNodePan((x) => x - dx * unitsPerPixel(1))
+        return
+      }
       const units = unitsPerPixel(zoomRef.current)
       setPan((x) => x - dx * units)
       setPanY((y) => y + dy * units)
@@ -264,7 +314,7 @@ export function usePanZoomGesture(
     }
 
     const onWheel = (event: WheelEvent) => {
-      if (!allowZoom) return
+      if (!allowZoom || nodeMode) return
       // ページ全体のスクロール・ブラウザのピンチズームへ流さない
       event.preventDefault()
       const sensitivity = event.ctrlKey ? PINCH_WHEEL_SENSITIVITY : WHEEL_SENSITIVITY
@@ -283,7 +333,7 @@ export function usePanZoomGesture(
       element.removeEventListener('pointercancel', onPointerUp)
       element.removeEventListener('wheel', onWheel)
     }
-  }, [target, enabled, allowZoom, setPan, setPanY, setZoom])
+  }, [target, mode, allowZoom, setPan, setNodePan, setPanY, setZoom])
 }
 
 type Point = { x: number; y: number }

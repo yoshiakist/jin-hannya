@@ -20,6 +20,7 @@ import { VIEW_HEIGHT } from '../world/paper.ts'
 import {
   panXAtom,
   panYAtom,
+  nodePanXAtom,
   zoomAtom,
   viewHalfWidthAtom,
   panBoundsFor,
@@ -36,6 +37,7 @@ function CameraRig() {
   const nav = useAtomValue(navAtom)
   const panX = useAtomValue(panXAtom)
   const panY = useAtomValue(panYAtom)
+  const nodePan = useAtomValue(nodePanXAtom)
   const zoom = useAtomValue(zoomAtom)
   const halfWidth = useAtomValue(viewHalfWidthAtom)
   const setPan = useSetAtom(panXAtom)
@@ -100,7 +102,9 @@ function CameraRig() {
   useFrame((_, delta) => {
     // L0 ではパンと拡大に追従し、潜ったら等倍で行き先の構図へ戻る。
     // 遷移中は行き先の側の値を見る（根へ戻るなら送っていた位置、潜るなら大書が収まる位置）
-    target.current.x = toRoot ? panX : nodeX
+    // L1 以降は基準の構図（nodeX）にドラッグのぶん（nodePan）を足す。左へ送ると
+    // 画面の左へはみ出した本文が入ってくる
+    target.current.x = toRoot ? panX : nodeX + nodePan
     target.current.y = toRoot ? panY : 0
     target.current.zoom = toRoot ? zoom : 1
     // 縦 16 升ぶんが等倍でちょうど画面高に収まる。はみ出すのは横方向のみ

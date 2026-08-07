@@ -6,18 +6,22 @@
  */
 
 import { useAtomValue } from 'jotai'
-import { canPanLeftAtom } from '../world/pan.ts'
+import { canPanLeftAtom, canNodePanLeftAtom, nodePanRangeAtom } from '../world/pan.ts'
 import { isRootAtom } from '../nav/atoms.ts'
 
 export function LeftArrow() {
   const canPanLeft = useAtomValue(canPanLeftAtom)
+  const canNodePanLeft = useAtomValue(canNodePanLeftAtom)
+  const nodePanRange = useAtomValue(nodePanRangeAtom)
   const isRoot = useAtomValue(isRootAtom)
 
-  // 紙面が画面より広いのは L0 だけ。潜った先では出さない
-  if (!isRoot) return null
+  // 潜った先では本文が画面より広いときだけ出す（送り先が無いのに示唆しない）
+  if (!isRoot && nodePanRange <= 0) return null
+
+  const blinking = isRoot ? canPanLeft : canNodePanLeft
 
   return (
-    <div className={`left-arrow${canPanLeft ? ' is-blinking' : ''}`} aria-hidden>
+    <div className={`left-arrow${blinking ? ' is-blinking' : ''}`} aria-hidden>
       <svg viewBox="0 0 48 16" width="48" height="16" focusable="false">
         <path
           d="M46 8H2m0 0 6-5M2 8l6 5"

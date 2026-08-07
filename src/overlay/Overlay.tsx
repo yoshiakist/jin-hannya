@@ -6,7 +6,7 @@
  * **組版は DOM、絵は GPU** に振り分ける（README「2 レイヤー合成」）。
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useAtomValue, useSetAtom } from 'jotai'
 import {
@@ -18,7 +18,9 @@ import {
   isRootAtom,
   acceptsInputAtom,
 } from '../nav/atoms.ts'
-import { overlayInsets } from '../world/node-layout.ts'
+import { overlayInsets, DOC_EDGE_PX } from '../world/node-layout.ts'
+import { nodePanXAtom, nodePanRangeAtom, unitsPerPixel } from '../world/pan.ts'
+import { VIEW_HEIGHT } from '../world/paper.ts'
 import { labelText, type GraphNode } from '../content/schema.ts'
 import { APPEAR_DELAY_MS } from '../scene/Transition.tsx'
 import { SpeakButton } from './SpeakButton.tsx'
@@ -41,21 +43,32 @@ export function Overlay() {
   const doc = useAtomValue(currentDocAtom)
   const children = useAtomValue(childNodesAtom)
   const isRoot = useAtomValue(isRootAtom)
-  const insets = useOverlayInsets(node, children)
+  const size = useViewportSize()
+  const insets = useOverlayInsets(node, children, size)
   // サマリーの幅は字数と `max-height` が決める。本文はその左から始まるので実測して渡す
-  const [summaryWidth, measureSummary] = useMeasuredWidth()
+  const summary = useMeasuredElement()
+  const body = useMeasuredElement()
+  const nav = useAtomValue(navAtom)
+  const nodePan = useNodePan(
+    // 行き先が決まった時点でパンを戻す（遷移中は pendingId が行き先）
+    nav.pendingId ?? nav.nodeId,
+    [summary.element, body.element],
+    [node, size, summary.width, body.width],
+  )
 
   return (
     <div
       className="overlay"
       // 大書は WebGPU レイヤーにあり DOM からは測れない。カメラと同じ式で出した
-      // 画面右端からの距離を渡し、読み・サマリー・本文の x はこの 3 つから CSS が組む
+      // 画面右端からの距離を渡し、読み・サマリー・本文の x はこの 3 つから CSS が組む。
+      // パンのぶんはレイアウトを崩さないよう transform で足す（--node-pan-px）
       style={
         {
           '--headline-right': `${insets.headlineRight}px`,
           '--headline-left': `${insets.headlineLeft}px`,
           '--diagram-left': `${insets.diagramLeft}px`,
-          '--summary-width': `${summaryWidth}px`,
+          '--summary-width': `${summary.width}px`,
+          '--node-pan-px': `${nodePan}px`,
         } as React.CSSProperties
       }
     >
@@ -99,7 +112,7 @@ export function Overlay() {
         {!isRoot && (
           <motion.div
             key={`summary-${node.id}`}
-            ref={measureSummary}
+            ref={summary.measure}
             className="overlay__summary"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -115,6 +128,7 @@ export function Overlay() {
         {!isRoot && doc && (
           <motion.div
             key={`doc-${node.id}`}
+            ref={body.measure}
             className="overlay__doc"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -139,35 +153,86 @@ export function Overlay() {
  * 可動域と同じで**ビューポート依存**なので定数にせず、リサイズのたびに引き直す。
  * カメラ（`nodePanX`）と同じ式から出すので、DOM と WebGPU の 2 層が同じ構図を見る。
  */
-function useOverlayInsets(node: GraphNode, children: GraphNode[]) {
-  const [size, setSize] = useState(viewportSize)
-  useEffect(() => {
-    const onResize = () => setSize(viewportSize())
-    globalThis.addEventListener('resize', onResize)
-    return () => globalThis.removeEventListener('resize', onResize)
-  }, [])
+function useOverlayInsets(node: GraphNode, children: GraphNode[], size: ViewportSize) {
   return useMemo(
     () => overlayInsets(node, children, size.width, size.height),
     [node, children, size],
   )
 }
 
-function viewportSize(): { width: number; height: number } {
+interface ViewportSize {
+  width: number
+  height: number
+}
+
+function useViewportSize(): ViewportSize {
+  const [size, setSize] = useState(viewportSize)
+  useEffect(() => {
+    const onResize = () => setSize(viewportSize())
+    globalThis.addEventListener('resize', onResize)
+    return () => globalThis.removeEventListener('resize', onResize)
+  }, [])
+  return size
+}
+
+function viewportSize(): ViewportSize {
   return { width: globalThis.innerWidth || 0, height: globalThis.innerHeight || 0 }
 }
 
-/** 要素の幅を測り続けるコールバック ref。返り値の ref はそのまま要素へ渡す */
-function useMeasuredWidth(): [number, (element: HTMLElement | null) => void] {
+interface Measured {
+  element: HTMLElement | null
+  /** そのまま要素へ渡す ref */
+  measure: (element: HTMLElement | null) => void
+  width: number
+}
+
+/** 要素とその幅を測り続ける。幅は組版の結果なので、字数・画面寸法・書体の確定で変わる */
+function useMeasuredElement(): Measured {
+  const [element, setElement] = useState<HTMLElement | null>(null)
   const [width, setWidth] = useState(0)
-  const ref = useCallback((element: HTMLElement | null) => {
+  useEffect(() => {
     if (!element) return
     const observer = new ResizeObserver(([entry]) => {
       if (entry) setWidth(entry.contentRect.width)
     })
     observer.observe(element)
     return () => observer.disconnect()
-  }, [])
-  return [width, ref]
+  }, [element])
+  return { element, measure: setElement, width }
+}
+
+/**
+ * L1 以降のパン。可動域を実測して atom へ入れ、いまのパン量を px で返す。
+ *
+ * 本文は画面より広くなりうる（README「画面外へはみ出してよい」）。左へはみ出したぶんだけ
+ * ドラッグで送れるようにするのがここの役目で、可動域は本文とサマリーの左端から決まる。
+ *
+ * 位置は `getBoundingClientRect` ではなく `offsetLeft` で読む。パンは transform で当てるので、
+ * rect で測ると送った量が次の可動域に混ざり、測り直すたびに可動域が動いてしまう。
+ */
+function useNodePan(destinationId: string, elements: (HTMLElement | null)[], deps: unknown[]): number {
+  const pan = useAtomValue(nodePanXAtom)
+  const setPan = useSetAtom(nodePanXAtom)
+  const setRange = useSetAtom(nodePanRangeAtom)
+
+  // ノードが変わったら基準の構図へ戻す。行き先が決まった時点（遷移の始まり）で戻すので、
+  // 演出中のカメラは最初から新しいノードの構図へ向かう
+  useEffect(() => {
+    setPan(0)
+  }, [destinationId, setPan])
+
+  useLayoutEffect(() => {
+    const lefts = elements.filter((element) => element !== null).map((element) => element.offsetLeft)
+    const left = lefts.length > 0 ? Math.min(...lefts) : 0
+    // 画面に収まっているうちは送り先を作らない（数十 px のためにパンを示唆しない）。
+    // はみ出しているときは、左端が余白ぶん入り込むところまで送れるようにする
+    const overflow = left < 0 ? DOC_EDGE_PX - left : 0
+    setRange(overflow * unitsPerPixel(1))
+    // elements は毎回新しい配列になるので、測り直す条件は deps 側に列挙する
+  }, [setRange, ...deps])
+
+  // ワールド単位のパン量を px へ直す。左へ送る（負）と本文は右へ動く
+  return (-pan * (globalThis.innerHeight || 0)) / VIEW_HEIGHT
 }
 
 /**

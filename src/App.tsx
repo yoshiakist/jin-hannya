@@ -21,8 +21,9 @@ export function App() {
   useFirstGestureAudio(containerRef)
   useWooshOnTransition(phase)
 
-  // Tier 3 の紙面は DOM の段組みなので拡大に追従できない。そこではパンだけを許す
-  usePanZoomGesture(containerRef, isRoot, tier !== 3)
+  // Tier 3 の紙面は DOM の段組みなので拡大に追従できない。そこではパンだけを許す。
+  // L1 以降（node）は拡大を持たず、左右のパンだけが効く
+  usePanZoomGesture(containerRef, isRoot ? 'paper' : 'node', tier !== 3)
 
   return (
     <div
