@@ -53,6 +53,24 @@ export const currentDocAtom = atom((get) => docById(get(currentNodeAtom).id) ?? 
 /** 現在ノードが根か。左矢印や戻る操作の可否に使う */
 export const isRootAtom = atom((get) => get(currentNodeAtom).id === root.id)
 
+/**
+ * 戻る演出のあいだ、いま出ているテキストはもう用済み。
+ * `nodeId` は `settled` まで出発点を指し続けるので、それを待つと退場が演出の終わりまで遅れる。
+ * 相の開始と同時に引くための判定をここに置く（潜るときは新しい字が出るまで残す）。
+ */
+export const leavingAtom = atom((get) => get(navAtom).phase === 'zooming-out')
+
+/**
+ * 戻る先が根か。現在位置インジケータは深さの表示なので、まだ深いところへ戻るあいだは
+ * 出しっぱなしにし（中身だけ差し替える）、根へ戻るときだけ他のテキストと同時に引く。
+ */
+export const leavingToRootAtom = atom((get) => {
+  const state = get(navAtom)
+  if (state.phase !== 'zooming-out') return false
+  const target = state.pendingId ? nodeById(state.pendingId) : null
+  return !target || ancestryOf(target).length <= 1
+})
+
 // --- 実行環境 ---------------------------------------------------------------
 
 /** 性能ティア。起動時に 1 度だけ判定する */

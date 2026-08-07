@@ -17,6 +17,8 @@ import {
   navAtom,
   isRootAtom,
   acceptsInputAtom,
+  leavingAtom,
+  leavingToRootAtom,
 } from '../nav/atoms.ts'
 import { overlayInsets, DOC_EDGE_PX } from '../world/node-layout.ts'
 import { nodePanXAtom, nodePanRangeAtom, resetNodePanAtom, unitsPerPixel } from '../world/pan.ts'
@@ -45,6 +47,8 @@ export function Overlay() {
   const doc = useAtomValue(currentDocAtom)
   const children = useAtomValue(childNodesAtom)
   const isRoot = useAtomValue(isRootAtom)
+  // 戻り始めた時点で退場させる。`node` が入れ替わる（settled）のを待つと演出の終わりまで残る
+  const leaving = useAtomValue(leavingAtom)
   const size = useViewportSize()
   const insets = useOverlayInsets(node, children, size)
   // サマリーの幅は字数と `max-height` が決める。本文はその左から始まるので実測して渡す
@@ -81,7 +85,7 @@ export function Overlay() {
       </div>
 
       <AnimatePresence>
-        {!isRoot && (
+        {!isRoot && !leaving && (
           <motion.div
             key={node.id}
             className="overlay__reading"
@@ -111,7 +115,7 @@ export function Overlay() {
       </AnimatePresence>
 
       <AnimatePresence>
-        {!isRoot && (
+        {!isRoot && !leaving && (
           <motion.div
             key={`summary-${node.id}`}
             ref={summary.measure}
@@ -127,7 +131,7 @@ export function Overlay() {
       </AnimatePresence>
 
       <AnimatePresence>
-        {!isRoot && doc && (
+        {!isRoot && !leaving && doc && (
           <motion.div
             key={`doc-${node.id}`}
             ref={body.measure}
@@ -285,10 +289,11 @@ function Breadcrumb() {
   const ancestry = useAtomValue(ancestryAtom)
   const dispatch = useSetAtom(navAtom)
   const accepts = useAtomValue(acceptsInputAtom)
+  const leavingToRoot = useAtomValue(leavingToRootAtom)
 
   return (
     <AnimatePresence>
-      {ancestry.length > 1 && (
+      {ancestry.length > 1 && !leavingToRoot && (
         <motion.nav
           key="breadcrumb"
           className="breadcrumb"
