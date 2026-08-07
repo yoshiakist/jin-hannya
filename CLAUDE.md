@@ -30,7 +30,7 @@ src/
   overlay/  Overlay.tsx PaperFallback.tsx SpeakButton.tsx AudioControls.tsx LeftArrow.tsx
   nav/      fsm.ts atoms.ts router.ts
   content/  schema.ts loader.ts sutra.ts
-  world/    paper.ts(格子寸法・index→(column,row)) pan.ts(可動域・ドラッグ)
+  world/    paper.ts(格子寸法・index→(column,row)) pan.ts(可動域・ドラッグ・拡大)
   audio/    index.ts
 scripts/    build-glyphs.ts svg-path.ts validate-graph.ts
 content/    sutra.txt / graph/*.yaml(15) / docs/*.md(15)
@@ -65,6 +65,6 @@ assets/     svg/(筆文字118) pattern/circle.svg bgm/ sfx/ voice/(未収録)
 
 - `npm run build` は通る。確認環境は headless Chromium（Tier 2 / WebGL2）1440x810。
 - **残作業の本体は遷移演出。** 相の管理と粒子データまではあるが、生存字の連続移動が繋がっておらず（`Transition.tsx` の `visibleGlyphs()` から spring 補間へ）、粒子が画面に出ない（`PointsNodeMaterial` の点サイズを疑っている）。
-- 未確認: BGM / SFX / ダッキング、Tier 3 の `PaperFallback`、パン同期、`column` の hover グロー、読み上げ（音源未収録）。
+- 未確認: BGM / SFX / ダッキング、Tier 3 の `PaperFallback`、パン同期、ホイール／ピンチ拡大、`column` の hover グロー、読み上げ（音源未収録）。
 - 未決: BGM 配信方式（案 A 短尺ループ全長デコード / 案 B 2 要素クロスフェード。**現状は案 B 既定**、`BGM_STRATEGY` 1 定数で切替）、字の大きさの実機基準。
 - 完了条件のチェックは**画面で確認できたものだけ**に付ける。実装しただけのものは外したまま「実装済みだが未確認」に書く。

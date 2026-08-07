@@ -16,55 +16,78 @@ import { Transition } from './Transition.tsx'
 import { loadGlyphs } from './glyphs.ts'
 import { cappedDpr, measureFrameBudget } from './tier.ts'
 import { VIEW_HEIGHT } from '../world/paper.ts'
-import { panXAtom, panBoundsAtom, panBoundsFor, halfWidthFor, INITIAL_PAN_X } from '../world/pan.ts'
+import {
+  panXAtom,
+  panYAtom,
+  zoomAtom,
+  viewHalfWidthAtom,
+  panBoundsFor,
+  halfWidthFor,
+  INITIAL_PAN_X,
+} from '../world/pan.ts'
 import { navAtom, isRootAtom, particleScaleAtom, tierAtom } from '../nav/atoms.ts'
 import { root } from '../content/loader.ts'
 
-/** 視野高を VIEW_HEIGHT に固定し、パンをカメラへ反映する */
+/** 視野高を VIEW_HEIGHT / 拡大率 に保ち、パンと拡大をカメラへ反映する */
 function CameraRig() {
   const camera = useThree((state) => state.camera) as THREE.OrthographicCamera
   const size = useThree((state) => state.size)
   const panX = useAtomValue(panXAtom)
+  const panY = useAtomValue(panYAtom)
+  const zoom = useAtomValue(zoomAtom)
   const setPan = useSetAtom(panXAtom)
-  const setBounds = useSetAtom(panBoundsAtom)
+  const setZoom = useSetAtom(zoomAtom)
+  const setHalfWidth = useSetAtom(viewHalfWidthAtom)
   const isRoot = useAtomValue(isRootAtom)
-  const target = useRef(INITIAL_PAN_X)
+  const target = useRef({ x: INITIAL_PAN_X, y: 0, zoom: 1 })
   const initialised = useRef(false)
   /** 最初のフレームで読み始めの位置へ飛ばしたか */
   const snapped = useRef(false)
 
   useEffect(() => {
-    // 縦 16 升ぶんが必ず画面高に収まる。はみ出すのは横方向のみ
-    camera.zoom = size.height / VIEW_HEIGHT
-    camera.updateProjectionMatrix()
-
     // 可動域は画面のアスペクト比で変わる。リサイズのたびに引き直す
-    const bounds = panBoundsFor(halfWidthFor(size.width, size.height))
-    setBounds(bounds)
+    setHalfWidth(halfWidthFor(size.width, size.height))
     // 読み始めは紙面の右上、すなわち第 1 列の先頭。
     // atom の初期値は窓の寸法から出してあるので、ここは Canvas の実測との差を詰めるだけ。
     // 補間を挟むと起動直後に紙面が横へ流れて見えるので、初回はカメラごと飛ばす
-    setPan((x) => (initialised.current ? x : bounds.max))
-    if (!initialised.current) {
-      initialised.current = true
-      target.current = bounds.max
-      camera.position.x = bounds.max
-    }
-  }, [camera, size.width, size.height, setBounds, setPan])
+    if (initialised.current) return
+    // 起動直後は等倍なので可動域は実測の半幅からそのまま出せる
+    const start = panBoundsFor(halfWidthFor(size.width, size.height)).max
+    initialised.current = true
+    setPan(start)
+    target.current.x = start
+    camera.position.x = start
+  }, [camera, size.width, size.height, setHalfWidth, setPan])
+
+  // 潜るあいだは等倍へ戻す。L1 以降は拡大の概念を持たない
+  useEffect(() => {
+    if (!isRoot) setZoom(1)
+  }, [isRoot, setZoom])
 
   useFrame((_, delta) => {
-    // L0 ではパンに追従し、潜ったら中央へ戻る
-    target.current = isRoot ? panX : 0
+    // L0 ではパンと拡大に追従し、潜ったら中央・等倍へ戻る
+    target.current.x = isRoot ? panX : 0
+    target.current.y = isRoot ? panY : 0
+    target.current.zoom = isRoot ? zoom : 1
+    // 縦 16 升ぶんが等倍でちょうど画面高に収まる。はみ出すのは横方向のみ
+    const targetZoom = (size.height / VIEW_HEIGHT) * target.current.zoom
     // 最初の 1 フレームだけは補間せず読み始めの位置へ置く。
     // 補間すると起動直後に紙面が中央から右へ流れて見える
     if (!snapped.current) {
       snapped.current = true
-      camera.position.x = target.current
+      camera.position.set(target.current.x, target.current.y, camera.position.z)
+      camera.zoom = targetZoom
+      camera.updateProjectionMatrix()
       return
     }
     // spring 相当の指数補間。フレームレートに依らないよう delta で減衰させる
     const k = 1 - Math.exp(-delta * 9)
-    camera.position.x += (target.current - camera.position.x) * k
+    camera.position.x += (target.current.x - camera.position.x) * k
+    camera.position.y += (target.current.y - camera.position.y) * k
+    if (Math.abs(targetZoom - camera.zoom) > 1e-4) {
+      camera.zoom += (targetZoom - camera.zoom) * k
+      camera.updateProjectionMatrix()
+    }
   })
 
   return null

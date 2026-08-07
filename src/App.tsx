@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { useAtomValue, useSetAtom } from 'jotai'
 import { Stage } from './scene/Stage.tsx'
 import { Overlay } from './overlay/Overlay.tsx'
 import { PaperFallback } from './overlay/PaperFallback.tsx'
 import { useHashRouting } from './nav/router.ts'
 import { tierAtom, phaseAtom, isRootAtom, audioStartedAtom, bgmVolumeAtom } from './nav/atoms.ts'
-import { usePanGesture, panXAtom, panBoundsAtom } from './world/pan.ts'
+import { usePanZoomGesture, panXAtom, panBoundsAtom } from './world/pan.ts'
 import { VIEW_HEIGHT } from './world/paper.ts'
 import { startAudio, playWoosh } from './audio/index.ts'
 
@@ -21,9 +21,8 @@ export function App() {
   useFirstGestureAudio(containerRef)
   useWooshOnTransition(phase)
 
-  // 画面 1px が何ワールド単位か。カメラの視野高が VIEW_HEIGHT に固定されているので高さから決まる
-  const unitsPerPixel = useCallback(() => VIEW_HEIGHT / (globalThis.innerHeight || 1), [])
-  usePanGesture(containerRef, unitsPerPixel, isRoot)
+  // Tier 3 の紙面は DOM の段組みなので拡大に追従できない。そこではパンだけを許す
+  usePanZoomGesture(containerRef, isRoot, tier !== 3)
 
   return (
     <div
