@@ -73,17 +73,16 @@ export function headlineLayout(label: string): HeadlineLayout {
   const longest = Math.max(...columns.map((column) => column.length))
   const size = Math.min(HEADLINE_SIZE, (VIEW_HEIGHT * 0.80) / longest)
 
+  // いちばん長い列を画面の縦中央に置いたときの上端。全列がこの高さから書き出す
+  const top = ((longest - 1) / 2) * size
+
   const chars: string[] = []
   const positions: [number, number, number][] = []
   columns.forEach((column, index) => {
-    // 列ごとに縦の中央で揃える。長さの違う列が並んでも重心が動かない
+    // 列は上で揃える。長さの違う列が並んでも書き出しの高さが動かない
     for (const [row, char] of column.entries()) {
       chars.push(char)
-      positions.push([
-        HEADLINE_X - index * size * 1.15,
-        ((column.length - 1) / 2 - row) * size,
-        0,
-      ])
+      positions.push([HEADLINE_X - index * size * 1.15, top - row * size, 0])
     }
   })
   return { chars, positions, size }
