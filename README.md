@@ -464,7 +464,7 @@ float32 ステレオ 44.1kHz で **約 170MB** のメモリになり、モバイ
 
 | パス | 内容 | 状態 |
 |---|---|---|
-| `assets/svg/*.svg` | 筆文字グリフ **117 字**。`100x100` viewBox、単一 `<path>`、`fill="white"`、`clipPath` 付き | `知` が不足（→ [実装状況](#実装状況)） |
+| `assets/svg/*.svg` | 筆文字グリフ **118 字**。`100x100` viewBox、単一 `<path>`、`fill="white"`、`clipPath` 付き | 揃っている |
 | `assets/pattern/circle.svg` | **円相**（`layout: circle` の外周）。筆で描いた円のトレース | 揃っている |
 | `assets/bgm/sample_music_01.mp3` | ループ BGM のサンプル（約 7.7MB） | 仮。ループ点の調整とファイルサイズ削減が必要 |
 | `assets/sfx/woosh.wav` | 遷移効果音 | 仮 |
@@ -531,7 +531,7 @@ float32 ステレオ 44.1kHz で **約 170MB** のメモリになり、モバイ
 ## 実装状況
 
 最終更新: 2026-08-07。確認環境は headless Chromium（WebGPU アダプタ無し → **Tier 2**、WebGL2 バックエンド）、1440x810。
-`tsc --noEmit` と `vite build` は通る。**`npm run build` は後述の `知.svg` 不足で `content:validate` で落ちる**（`npm run dev` は通る）。
+`npm run build`（グラフ検証 → グリフ前計算 → 型検査 → 本番ビルド）は通る。
 
 ### 完了している
 
@@ -575,7 +575,7 @@ float32 ステレオ 44.1kHz で **約 170MB** のメモリになり、モバイ
 
 | 項目 | 内容 |
 |---|---|
-| **`知.svg` が無い** | `content/sutra.txt` の 208 文字目。`智` は在庫にあるが別字なので置換していない。**これがあるかぎり `npm run build` は落ちる**（`npm run dev` は通り、該当字だけ描画されず警告が出る） |
+| ~~`知.svg` が無い~~ | **解消済み。** `content/sutra.txt` の 208 文字目にあたる `知` を追加してもらった（`智` は在庫にあるが別字なので置換していなかった）。これで全 276 字が在庫内に収まり、`content:validate` はエラー 0 件になった |
 | `舍` / `声` を正規化した | 在庫が `舎` / `聲` だったため `content/sutra.txt` を置換した。字数は変わらないので `range` はずれていない |
 | `content/sutra.txt` の空白 | 改行と全角スペースが含まれている。ローダが除去して正規形を作るので `range` はずれないが、**ファイル上の行区切りと描画される 16 字格子は一致しない**。README の規定（1 行の連続文字列）に寄せるなら整形が要る |
 | 読み上げ音源 | 未収録。ノードの `audio` は全て未設定で、ボタンは出ない |
