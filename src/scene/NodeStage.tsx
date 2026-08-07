@@ -27,6 +27,7 @@ import {
   approach,
 } from './materials.ts'
 import { carriedNodeId } from './carry.ts'
+import { swayAt, swayPhase } from './sway.ts'
 import { VIEW_HEIGHT } from '../world/paper.ts'
 import { navAtom, currentNodeAtom, childNodesAtom, acceptsInputAtom } from '../nav/atoms.ts'
 import { labelText, type GraphNode } from '../content/schema.ts'
@@ -200,7 +201,15 @@ function CircleLayout({ items }: { items: DiagramItem[] }) {
 
   return (
     <group position={[DIAGRAM_X, 0, 0]}>
-      <Glyph char={CIRCLE_KEY} position={[0, 0, -0.2]} size={diameter} color={STROKE} opacity={0.55} />
+      <Glyph
+        char={CIRCLE_KEY}
+        position={[0, 0, -0.2]}
+        size={diameter}
+        color={STROKE}
+        opacity={0.55}
+        // 円相は図の地。振れ幅は中の字に合わせ、輪だけが大きく泳がないようにする
+        swaySize={diameter * 0.17}
+      />
       {items.map((item) => (
         <ChildNode key={item.node.id} item={item} />
       ))}
@@ -347,12 +356,18 @@ export function Glyph({
   opacity = 1,
   focused = false,
   owner,
+  swaySize = size,
 }: {
   char: string
   position: [number, number, number]
   size: number
   color: Color
   opacity?: number
+  /**
+   * ゆらぎの振れ幅を決める大きさ。既定は字面そのもの。
+   * 円相のように字ではないものだけ、周りの字と同じ幅で漂うよう小さく渡す
+   */
+  swaySize?: number
   /** 琥珀への発色と滲み。切り替えは瞬時ではなく FOCUS_FADE 秒かけて渡る */
   focused?: boolean
   /** この字が属するノード id。遷移で持ち越される側かどうかの判定に使う */
@@ -384,8 +399,9 @@ export function Glyph({
   // 種は字ごとに固定。同じ字は常に同じムラになるので、遷移で拡大しても模様が飛ばない
   ink.seed.value = ((char.codePointAt(0) ?? 0) % 251) / 251 * 8
 
-  // 大書もわずかにゆらぐ。紙面と同じ運動則にすることで、潜っても同じ場だと分かる
-  const phase = useMemo(() => (char.charCodeAt(0) % 97) / 97 * Math.PI * 2, [char])
+  // 大書も図の中の字もゆらぐ。紙面とまったく同じ運動則（`sway.ts`）に乗せることで、
+  // 潜っても同じ場に浮かんでいると分かる。位相は字から引き、遷移の持ち越しと揃える
+  const phase = useMemo(() => swayPhase(char.codePointAt(0) ?? 0), [char])
   useFrame(({ clock }, delta) => {
     // 持ち越される字は遷移中こちらでは描かない（Transition が動かしながら描く）。
     // 相ではなく id の一致で決まるので、React の再レンダーを待たずフレームごとに引く
@@ -397,12 +413,9 @@ export function Glyph({
 
     const group = groupRef.current
     if (!group) return
-    const t = clock.elapsedTime
-    group.position.set(
-      position[0] + Math.sin(t * 0.42 + phase) * size * 0.012,
-      position[1] + Math.cos(t * 0.31 + phase) * size * 0.012,
-      position[2],
-    )
+    const sway = swayAt(phase, swaySize, clock.elapsedTime)
+    group.position.set(position[0] + sway.x, position[1] + sway.y, position[2])
+    group.rotation.z = sway.rotation
   })
 
   if (!geometry) return null

@@ -28,6 +28,7 @@ import { navAtom, tierAtom } from '../nav/atoms.ts'
 import { nodeById, root, childrenOf, SUTRA_INDEX_TO_NODE } from '../content/loader.ts'
 import { SUTRA_CHARS } from '../content/sutra.ts'
 import { gridPosition, GLYPH_SIZE } from '../world/paper.ts'
+import { swayAt, swayPhase } from './sway.ts'
 import { labelText, type GraphNode } from '../content/schema.ts'
 
 /** 遷移演出の尺（ミリ秒）。ふんわりと滑らかに接続する */
@@ -43,6 +44,11 @@ export const APPEAR_DELAY_MS = 500
 interface StageGlyph extends ParticleSource {
   /** この字が属するノード id。紙面の句の範囲外は null */
   owner: string | null
+  /**
+   * ゆらぎの位相（`sway.ts`）。紙面は全文インデックス、大書と図は字から引く。
+   * 描画側とまったく同じ種を使うことで、持ち越しの字が出発点でも行き先でも揺れの位置ごと繋がる
+   */
+  phase: number
 }
 
 /**
@@ -62,6 +68,7 @@ function visibleGlyphs(node: GraphNode): StageGlyph[] {
         position: [x, y] as [number, number],
         size: GLYPH_SIZE,
         owner: SUTRA_INDEX_TO_NODE[index] ?? null,
+        phase: swayPhase(index),
       }
     })
   }
@@ -69,7 +76,13 @@ function visibleGlyphs(node: GraphNode): StageGlyph[] {
   const { chars, positions, size } = headlineLayout(node.label)
   const headline: StageGlyph[] = chars.map((char, i) => {
     const [x, y] = positions[i]!
-    return { char, position: [x, y] as [number, number], size, owner: node.id }
+    return {
+      char,
+      position: [x, y] as [number, number],
+      size,
+      owner: node.id,
+      phase: swayPhase(char.codePointAt(0) ?? 0),
+    }
   })
 
   const kids = diagramItems(node, childrenOf(node)).flatMap((item) => {
@@ -81,6 +94,7 @@ function visibleGlyphs(node: GraphNode): StageGlyph[] {
         position: [DIAGRAM_X + item.position[0] + dx, item.position[1] + dy] as [number, number],
         size: item.size,
         owner: item.node.id,
+        phase: swayPhase(char.codePointAt(0) ?? 0),
       }
     })
   })
@@ -261,16 +275,21 @@ function CarryGlyph({ pair, progress }: { pair: CarryPair; progress: () => numbe
   // 種は字ごとに固定。紙面・大書と同じ規則にして、すり替わりでムラが飛ばないようにする
   ink.seed.value = (((pair.char.codePointAt(0) ?? 0) % 251) / 251) * 8
 
-  useFrame(() => {
+  useFrame(({ clock }) => {
     const mesh = meshRef.current
     if (!mesh) return
     const t = ease(progress())
     const size = pair.from.size + (pair.to.size - pair.from.size) * t
+    // ゆらぎも出発点のものから行き先のものへ渡す。演出のあいだ揺れが止まらず、
+    // 両端では紙面・大書が出す値とぴたり一致するので、すり替わりで字が跳ねない
+    const before = swayAt(pair.from.phase, pair.from.size, clock.elapsedTime)
+    const after = swayAt(pair.to.phase, pair.to.size, clock.elapsedTime)
     mesh.position.set(
-      pair.from.position[0] + (pair.to.position[0] - pair.from.position[0]) * t,
-      pair.from.position[1] + (pair.to.position[1] - pair.from.position[1]) * t,
+      pair.from.position[0] + (pair.to.position[0] - pair.from.position[0]) * t + before.x + (after.x - before.x) * t,
+      pair.from.position[1] + (pair.to.position[1] - pair.from.position[1]) * t + before.y + (after.y - before.y) * t,
       0,
     )
+    mesh.rotation.z = before.rotation + (after.rotation - before.rotation) * t
     mesh.scale.setScalar(size)
     // 墨のムラはワールド単位で一定。大きさが変わるあいだも同じ細かさに保つ
     ink.scale.value = size

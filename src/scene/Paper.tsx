@@ -26,13 +26,11 @@ import {
   approach,
   transitionAlpha,
 } from './materials.ts'
-import { CELL_X, CELL_Y, gridPosition } from '../world/paper.ts'
+import { CELL_X, CELL_Y, GLYPH_SIZE, gridPosition } from '../world/paper.ts'
 import { navAtom, acceptsInputAtom } from '../nav/atoms.ts'
 import { SUTRA_INDEX_TO_NODE } from '../content/loader.ts'
 import { carriedNodeId } from './carry.ts'
-
-/** 各文字が基準位置から微小にゆらぐ幅（ワールド単位） */
-const SWAY = 0.035
+import { swayAt, swayPhase } from './sway.ts'
 
 /** 滲みの最大の濃さ */
 const GLOW_STRENGTH = 0.5
@@ -69,22 +67,13 @@ export function Paper() {
 }
 
 /**
- * ゆらぎの位相。字ごとにずらす（同じ周期で揃うと格子が波打って見える）。
- * 墨と発光の滲みが別のメッシュに分かれても同じ場所に居るよう、位相は index から引き直す。
+ * ゆらぎ込みの字の位置と傾き。位相は全文インデックスから引く
+ * （同じ字が紙面に何度出ても別々に揺れ、格子が波打たない）。
  */
-function swayPhase(index: number): number {
-  return (Math.sin(index * 12.9898) * 43758.5453) % (Math.PI * 2)
-}
-
-/** ゆらぎ込みの字の位置と傾き */
-function swayAt(index: number, t: number): { x: number; y: number; rotation: number } {
+function paperSway(index: number, t: number): { x: number; y: number; rotation: number } {
   const [x, y] = gridPosition(index)
-  const phase = swayPhase(index)
-  return {
-    x: x + Math.sin(t * 0.55 + phase) * SWAY,
-    y: y + Math.cos(t * 0.41 + phase * 1.7) * SWAY,
-    rotation: Math.sin(t * 0.3 + phase) * 0.012,
-  }
+  const sway = swayAt(swayPhase(index), GLYPH_SIZE, t)
+  return { x: x + sway.x, y: y + sway.y, rotation: sway.rotation }
 }
 
 /**
@@ -154,7 +143,7 @@ function FocusGlow({ indexToNode }: { indexToNode: readonly (string | null)[] })
     if (moved) focus.needsUpdate = true
 
     for (let i = 0; i < count; i++) {
-      const { x, y } = swayAt(i, t)
+      const { x, y } = paperSway(i, t)
       // 滲みは字の裏。加算合成なので墨そのものを白く飛ばさない
       dummy.position.set(x, y, -0.05)
       dummy.scale.setScalar(GLOW_PLANE)
@@ -324,7 +313,7 @@ function CharInstances({ group, indexToNode }: { group: CharGroup; indexToNode: 
     if (switched) persist.needsUpdate = true
 
     group.indices.forEach((index, i) => {
-      const { x, y, rotation } = swayAt(index, t)
+      const { x, y, rotation } = paperSway(index, t)
       dummy.position.set(x, y, 0)
       dummy.rotation.z = rotation
       dummy.updateMatrix()
