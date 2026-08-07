@@ -6,17 +6,20 @@
  * **組版は DOM、絵は GPU** に振り分ける（README「2 レイヤー合成」）。
  */
 
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useAtomValue, useSetAtom } from 'jotai'
 import {
   currentNodeAtom,
   currentDocAtom,
+  childNodesAtom,
   ancestryAtom,
   navAtom,
   isRootAtom,
   acceptsInputAtom,
 } from '../nav/atoms.ts'
-import { labelText } from '../content/schema.ts'
+import { overlayInsets } from '../world/node-layout.ts'
+import { labelText, type GraphNode } from '../content/schema.ts'
 import { APPEAR_DELAY_MS } from '../scene/Transition.tsx'
 import { SpeakButton } from './SpeakButton.tsx'
 import { AudioControls } from './AudioControls.tsx'
@@ -36,10 +39,26 @@ const APPEAR_DELAY_S = APPEAR_DELAY_MS / 1000
 export function Overlay() {
   const node = useAtomValue(currentNodeAtom)
   const doc = useAtomValue(currentDocAtom)
+  const children = useAtomValue(childNodesAtom)
   const isRoot = useAtomValue(isRootAtom)
+  const insets = useOverlayInsets(node, children)
+  // サマリーの幅は字数と `max-height` が決める。本文はその左から始まるので実測して渡す
+  const [summaryWidth, measureSummary] = useMeasuredWidth()
 
   return (
-    <div className="overlay">
+    <div
+      className="overlay"
+      // 大書は WebGPU レイヤーにあり DOM からは測れない。カメラと同じ式で出した
+      // 画面右端からの距離を渡し、読み・サマリー・本文の x はこの 3 つから CSS が組む
+      style={
+        {
+          '--headline-right': `${insets.headlineRight}px`,
+          '--headline-left': `${insets.headlineLeft}px`,
+          '--diagram-left': `${insets.diagramLeft}px`,
+          '--summary-width': `${summaryWidth}px`,
+        } as React.CSSProperties
+      }
+    >
       <Breadcrumb />
       <div className="overlay__top">
         <SpeakButton />
@@ -56,7 +75,16 @@ export function Overlay() {
             exit={{ opacity: 0, transition: { duration: 0.45, delay: 0 } }}
             transition={{ duration: 0.45, delay: APPEAR_DELAY_S }}
           >
-            <p className="reading">{node.reading}</p>
+            {/* 読みの空白は列の切れ目。大書の label と同じ約束で、どこで折るかは
+                コンテンツ側（`content/graph/*.yaml` の reading）が決める */}
+            {node.reading
+              .split(/\s+/u)
+              .filter((part) => part.length > 0)
+              .map((part, i) => (
+                <p key={i} className="reading">
+                  {part}
+                </p>
+              ))}
             {node.sanskrit && (
               <p className="sanskrit">
                 <span className="sanskrit__kana">{node.sanskrit.kana}</span>
@@ -71,6 +99,7 @@ export function Overlay() {
         {!isRoot && (
           <motion.div
             key={`summary-${node.id}`}
+            ref={measureSummary}
             className="overlay__summary"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -102,6 +131,43 @@ export function Overlay() {
       <LeftArrow />
     </div>
   )
+}
+
+/**
+ * 大書と図の位置（画面右端からの px）。
+ *
+ * 可動域と同じで**ビューポート依存**なので定数にせず、リサイズのたびに引き直す。
+ * カメラ（`nodePanX`）と同じ式から出すので、DOM と WebGPU の 2 層が同じ構図を見る。
+ */
+function useOverlayInsets(node: GraphNode, children: GraphNode[]) {
+  const [size, setSize] = useState(viewportSize)
+  useEffect(() => {
+    const onResize = () => setSize(viewportSize())
+    globalThis.addEventListener('resize', onResize)
+    return () => globalThis.removeEventListener('resize', onResize)
+  }, [])
+  return useMemo(
+    () => overlayInsets(node, children, size.width, size.height),
+    [node, children, size],
+  )
+}
+
+function viewportSize(): { width: number; height: number } {
+  return { width: globalThis.innerWidth || 0, height: globalThis.innerHeight || 0 }
+}
+
+/** 要素の幅を測り続けるコールバック ref。返り値の ref はそのまま要素へ渡す */
+function useMeasuredWidth(): [number, (element: HTMLElement | null) => void] {
+  const [width, setWidth] = useState(0)
+  const ref = useCallback((element: HTMLElement | null) => {
+    if (!element) return
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) setWidth(entry.contentRect.width)
+    })
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
+  return [width, ref]
 }
 
 /**

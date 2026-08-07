@@ -78,6 +78,28 @@ body {
   position: absolute;
   inset: 0;
   pointer-events: none;
+
+  /* 大書・図の実測（Overlay.tsx が毎リサイズで入れる）。いずれも画面右端からの距離。
+     ここに書いた値は実測が入るまでの控え */
+  --headline-right: 150px;
+  --headline-left: 150px;
+  --diagram-left: 150px;
+  --summary-width: 0px;
+
+  /* 大書との間合い。読み・サマリー・本文の x はこの 3 つだけで動かせる */
+  --reading-gap: clamp(10px, 1.1vw, 20px);
+  --summary-gap: clamp(14px, 1.8vw, 34px);
+  --doc-gap: clamp(18px, 2.2vw, 44px);
+  /* 本文の左に残す余白。現在位置インジケータと重ねない */
+  --doc-edge: clamp(48px, 6vw, 96px);
+
+  /* サマリーは大書の左端から、本文はさらにサマリーの左から始まる。
+     図を持つノードでは図の左端も越えさせる（円相や縦連結に本文を重ねない） */
+  --summary-right: calc(var(--headline-left) + var(--summary-gap));
+  --doc-right: max(
+    calc(var(--summary-right) + var(--summary-width) + var(--doc-gap)),
+    calc(var(--diagram-left) + var(--doc-gap))
+  );
 }
 
 .overlay > * {
@@ -93,17 +115,22 @@ body {
   gap: 12px;
 }
 
-/* 読み（かな）／梵語。大書のすぐ左脇に、極小・字間広めの縦組みで置く */
+/* 読み（かな）／梵語。大書の右脇の帯に、極小・字間広めの縦組みで置く。
+   translateX(100%) で「右端を大書の右端に合わせる」ではなく
+   「左端を大書の右端に置く」にする。列が増えても大書に被らず、画面の端へ伸びていく */
 .overlay__reading {
   position: absolute;
   top: 12vh;
-  right: clamp(120px, 18vw, 260px);
+  right: calc(var(--headline-right) - var(--reading-gap));
+  transform: translateX(100%);
+  max-width: max(0px, calc(var(--headline-right) - var(--reading-gap)));
   writing-mode: vertical-rl;
   font-size: clamp(9px, 1.05vh, 12px);
   letter-spacing: 0.5em;
   color: var(--text-dim);
   line-height: 2.2;
   max-height: 76vh;
+  overflow: hidden;
 }
 
 .overlay__reading p {
@@ -117,11 +144,11 @@ body {
   opacity: 0.75;
 }
 
-/* 短い定義（サマリー）。縦書き 2〜4 列 */
+/* 短い定義（サマリー）。縦書き 2〜4 列。大書の左端から左へ流す */
 .overlay__summary {
   position: absolute;
   top: 14vh;
-  right: clamp(210px, 26vw, 380px);
+  right: var(--summary-right);
   writing-mode: vertical-rl;
   max-height: 62vh;
   font-size: clamp(12px, 1.5vh, 15px);
@@ -147,12 +174,14 @@ body {
   margin: 0;
 }
 
-/* 長文解説。縦書き多列、列は右から左へ進む */
+/* 長文解説。縦書き多列、列は右から左へ進む。書き出しはサマリーのさらに左 */
 .overlay__doc {
   position: absolute;
   top: 10vh;
-  left: clamp(48px, 6vw, 96px);
+  right: var(--doc-right);
   width: clamp(240px, 26vw, 420px);
+  /* 左は現在位置インジケータの手前で止める。狭い画面ほど列数が減る */
+  max-width: max(0px, calc(100% - var(--doc-right) - var(--doc-edge)));
   height: 78vh;
   writing-mode: vertical-rl;
   column-gap: 2.4em;

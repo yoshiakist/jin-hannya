@@ -23,7 +23,7 @@ import {
   diagramItems,
   childCharOffset,
   DIAGRAM_X,
-} from './NodeStage.tsx'
+} from '../world/node-layout.ts'
 import { navAtom, tierAtom } from '../nav/atoms.ts'
 import { nodeById, root, childrenOf, SUTRA_INDEX_TO_NODE } from '../content/loader.ts'
 import { SUTRA_CHARS } from '../content/sutra.ts'
