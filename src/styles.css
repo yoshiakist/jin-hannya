@@ -201,6 +201,11 @@ body {
   text-indent: 1em;
 }
 
+/* 括弧類で始まる段落。約物が空きを持つので字下げを重ねない */
+.overlay__doc p.overlay__doc-flush {
+  text-indent: 0;
+}
+
 /* 箇条書き。縦組みでは既定のマーカーの位置がブラウザごとに揺れるので、
    list-style は使わず中黒を自前で出し、折り返しは親文字の頭に揃える */
 .overlay__doc ul {

@@ -10,6 +10,14 @@
 /** 箇条書きの行頭。半角ハイフン + 空白 */
 const BULLET = /^[-*]\s+/
 
+/** 段落の行頭に来る括弧類。約物自身が 1 字ぶんの空きを持つので字下げは要らない */
+const OPENING_BRACKET = /^[（｛〈《【「『［〔〝]/
+
+/** 段落の頭が括弧類か（字下げを抑えるかどうか） */
+export function startsWithBracket(text: string): boolean {
+  return OPENING_BRACKET.test(text)
+}
+
 export interface Paragraph {
   type: 'paragraph'
   text: string

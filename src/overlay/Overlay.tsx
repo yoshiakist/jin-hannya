@@ -23,7 +23,7 @@ import { nodePanXAtom, nodePanRangeAtom, resetNodePanAtom, unitsPerPixel } from 
 import { VIEW_HEIGHT } from '../world/paper.ts'
 import { labelText, type GraphNode } from '../content/schema.ts'
 import { parseRuby } from '../content/ruby.ts'
-import { parseBlocks } from '../content/blocks.ts'
+import { parseBlocks, startsWithBracket } from '../content/blocks.ts'
 import { APPEAR_DELAY_MS } from '../scene/Transition.tsx'
 import { SpeakButton } from './SpeakButton.tsx'
 import { AudioControls } from './AudioControls.tsx'
@@ -145,7 +145,14 @@ export function Overlay() {
                   ))}
                 </ul>
               ) : (
-                <p key={i}>{renderRuby(block.text)}</p>
+                <p
+                  key={i}
+                  className={
+                    startsWithBracket(block.text) ? 'overlay__doc-flush' : undefined
+                  }
+                >
+                  {renderRuby(block.text)}
+                </p>
               ),
             )}
           </motion.div>
