@@ -12,7 +12,7 @@ import { useAtomValue, useSetAtom } from 'jotai'
 import * as THREE from 'three/webgpu'
 import { Paper } from './Paper.tsx'
 import { NodeStage } from './NodeStage.tsx'
-import { Transition, StageFade } from './Transition.tsx'
+import { Transition, StageFade, TRANSITION_MS, ease } from './Transition.tsx'
 import { loadGlyphs } from './glyphs.ts'
 import { cappedDpr, measureFrameBudget } from './tier.ts'
 import { VIEW_HEIGHT } from '../world/paper.ts'
@@ -25,24 +25,32 @@ import {
   halfWidthFor,
   INITIAL_PAN_X,
 } from '../world/pan.ts'
-import { navAtom, isRootAtom, particleScaleAtom, tierAtom } from '../nav/atoms.ts'
+import { navAtom, particleScaleAtom, tierAtom } from '../nav/atoms.ts'
 import { root } from '../content/loader.ts'
 
 /** 視野高を VIEW_HEIGHT / 拡大率 に保ち、パンと拡大をカメラへ反映する */
 function CameraRig() {
   const camera = useThree((state) => state.camera) as THREE.OrthographicCamera
   const size = useThree((state) => state.size)
+  const nav = useAtomValue(navAtom)
   const panX = useAtomValue(panXAtom)
   const panY = useAtomValue(panYAtom)
   const zoom = useAtomValue(zoomAtom)
   const setPan = useSetAtom(panXAtom)
   const setZoom = useSetAtom(zoomAtom)
   const setHalfWidth = useSetAtom(viewHalfWidthAtom)
-  const isRoot = useAtomValue(isRootAtom)
   const target = useRef({ x: INITIAL_PAN_X, y: 0, zoom: 1 })
   const initialised = useRef(false)
   /** 最初のフレームで読み始めの位置へ飛ばしたか */
   const snapped = useRef(false)
+  /** 遷移中のカメラの動き。開始時刻と出発点を握り、持ち越しの字と同じ尺で進める */
+  const flight = useRef<{ at: number; x: number; y: number; zoom: number } | null>(null)
+
+  // 画面に出したい紙面／大書は**行き先**のもの。遷移中に nav.nodeId（＝出発点）を見ると、
+  // 演出のあいだカメラが出発点に据え置かれ、行き先へ動く字を画面の外へ置き去りにする
+  const destinationId = nav.pendingId ?? nav.nodeId
+  const toRoot = destinationId === root.id
+  const transitioning = nav.phase === 'zooming-in' || nav.phase === 'zooming-out'
 
   useEffect(() => {
     // 可動域は画面のアスペクト比で変わる。リサイズのたびに引き直す
@@ -61,14 +69,30 @@ function CameraRig() {
 
   // 潜るあいだは等倍へ戻す。L1 以降は拡大の概念を持たない
   useEffect(() => {
-    if (!isRoot) setZoom(1)
-  }, [isRoot, setZoom])
+    if (!toRoot) setZoom(1)
+  }, [toRoot, setZoom])
+
+  // 遷移の始まりでカメラの出発点を控える。演出と同じ時刻から数え始めることが要点で、
+  // 字が動き出してからカメラが追いかけると、そのぶん字が画面の端へ振れて見える
+  useEffect(() => {
+    if (!transitioning) {
+      flight.current = null
+      return
+    }
+    flight.current = {
+      at: performance.now(),
+      x: camera.position.x,
+      y: camera.position.y,
+      zoom: camera.zoom,
+    }
+  }, [transitioning, nav.pendingId, camera])
 
   useFrame((_, delta) => {
-    // L0 ではパンと拡大に追従し、潜ったら中央・等倍へ戻る
-    target.current.x = isRoot ? panX : 0
-    target.current.y = isRoot ? panY : 0
-    target.current.zoom = isRoot ? zoom : 1
+    // L0 ではパンと拡大に追従し、潜ったら中央・等倍へ戻る。
+    // 遷移中は行き先の側の値を見る（根へ戻るなら送っていた位置、潜るなら中央）
+    target.current.x = toRoot ? panX : 0
+    target.current.y = toRoot ? panY : 0
+    target.current.zoom = toRoot ? zoom : 1
     // 縦 16 升ぶんが等倍でちょうど画面高に収まる。はみ出すのは横方向のみ
     const targetZoom = (size.height / VIEW_HEIGHT) * target.current.zoom
     // 最初の 1 フレームだけは補間せず読み始めの位置へ置く。
@@ -77,6 +101,17 @@ function CameraRig() {
       snapped.current = true
       camera.position.set(target.current.x, target.current.y, camera.position.z)
       camera.zoom = targetZoom
+      camera.updateProjectionMatrix()
+      return
+    }
+    const run = flight.current
+    if (run) {
+      // 遷移中は持ち越しの字と同じ時計・同じカーブで進める。ワールド座標の動きが揃うので、
+      // 画面上でも字は出発点から行き先へまっすぐ動く
+      const t = ease(Math.min(1, (performance.now() - run.at) / TRANSITION_MS))
+      camera.position.x = run.x + (target.current.x - run.x) * t
+      camera.position.y = run.y + (target.current.y - run.y) * t
+      camera.zoom = run.zoom + (targetZoom - run.zoom) * t
       camera.updateProjectionMatrix()
       return
     }

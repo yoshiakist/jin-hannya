@@ -104,8 +104,12 @@ function carryPairs(before: StageGlyph[], after: StageGlyph[], pivot: string | n
   return from.map((glyph, i) => ({ char: glyph.char, from: glyph, to: to[i]! }))
 }
 
-/** 行きも戻りも滑らかに出入りする補間。等速だと機械が動いて見える */
-function ease(t: number): number {
+/**
+ * 行きも戻りも滑らかに出入りする補間。等速だと機械が動いて見える。
+ * カメラ（`Stage.tsx` の `CameraRig`）も遷移のあいだはこれを使う。持ち越しの字と同じ尺・
+ * 同じカーブで動かさないと、ワールド座標では滑らかでも画面上では字が寄り道して見える。
+ */
+export function ease(t: number): number {
   return t * t * (3 - 2 * t)
 }
 
