@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.vite/
+
+# scripts/build-glyphs.ts の生成物（ビルド時に再生成される）
+src/generated/
+public/glyphs/
