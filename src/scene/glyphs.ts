@@ -5,7 +5,15 @@
  * ランタイムでは SVG を一切触らない（README「グリフの扱い」）。
  */
 
-import { BufferGeometry, BufferAttribute } from 'three'
+import {
+  BufferGeometry,
+  BufferAttribute,
+  ClampToEdgeWrapping,
+  DataTexture,
+  LinearFilter,
+  RedFormat,
+  UnsignedByteType,
+} from 'three'
 import glyphIndex from '../generated/glyphs.json'
 
 interface GlyphEntry {
@@ -15,15 +23,30 @@ interface GlyphEntry {
   indexCount: number
   particleOffset: number
   particleCount: number
+  /** SDF アトラス上のセル番号 */
+  sdfCell: number
 }
 
 const entries = glyphIndex.glyphs as Record<string, GlyphEntry>
+
+/**
+ * SDF アトラスの寸法。`scripts/sdf.ts` の定数がそのまま焼かれている。
+ * `extent` はセルが覆う字面座標の半径（字面は 0.5）、`spread` は距離が飽和するまでの幅。
+ */
+export const SDF = glyphIndex.sdf as {
+  res: number
+  columns: number
+  rows: number
+  extent: number
+  spread: number
+}
 
 /** 円相（assets/pattern/circle.svg）はグリフと同じ経路で載せる。字ではないので別キー */
 export const CIRCLE_KEY = '@circle'
 
 let meshBuffer: ArrayBuffer | null = null
 let particleBuffer: ArrayBuffer | null = null
+let sdfBuffer: ArrayBuffer | null = null
 let loading: Promise<void> | null = null
 
 export function loadGlyphs(): Promise<void> {
@@ -31,9 +54,11 @@ export function loadGlyphs(): Promise<void> {
     loading = Promise.all([
       fetch(`${import.meta.env.BASE_URL}glyphs/mesh.bin`).then((r) => r.arrayBuffer()),
       fetch(`${import.meta.env.BASE_URL}glyphs/particles.bin`).then((r) => r.arrayBuffer()),
-    ]).then(([mesh, particles]) => {
+      fetch(`${import.meta.env.BASE_URL}glyphs/sdf.bin`).then((r) => r.arrayBuffer()),
+    ]).then(([mesh, particles, sdf]) => {
       meshBuffer = mesh
       particleBuffer = particles
+      sdfBuffer = sdf
     })
   }
   return loading
@@ -85,6 +110,40 @@ export function glyphGeometry(char: string): BufferGeometry | null {
 
   geometryCache.set(char, geometry)
   return geometry
+}
+
+let sdfTexture: DataTexture | null = null
+
+/**
+ * 全字ぶんの符号付き距離場を敷き詰めた 1 枚のテクスチャ。
+ *
+ * 赤 1 成分・8bit。0.5 が輪郭、上が内側で下が外側（`SDF.spread` で飽和）。
+ * ミップは持たない（距離場は縮小補間で意味が壊れる）が、セルの縁は必ず飽和値なので
+ * バイリニアで隣のセルへ滲んでも見た目に出ない。
+ */
+export function glyphSdfTexture(): DataTexture | null {
+  if (sdfTexture) return sdfTexture
+  if (!sdfBuffer) return null
+
+  sdfTexture = new DataTexture(
+    new Uint8Array(sdfBuffer),
+    SDF.columns * SDF.res,
+    SDF.rows * SDF.res,
+    RedFormat,
+    UnsignedByteType,
+  )
+  sdfTexture.minFilter = LinearFilter
+  sdfTexture.magFilter = LinearFilter
+  sdfTexture.wrapS = ClampToEdgeWrapping
+  sdfTexture.wrapT = ClampToEdgeWrapping
+  sdfTexture.generateMipmaps = false
+  sdfTexture.needsUpdate = true
+  return sdfTexture
+}
+
+/** その字の SDF アトラス上のセル番号。グリフが無ければ `null` */
+export function sdfCellOf(char: string): number | null {
+  return entryOf(char)?.sdfCell ?? null
 }
 
 /**

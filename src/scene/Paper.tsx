@@ -9,16 +9,17 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, type ThreeEvent } from '@react-three/fiber'
 import { useAtomValue, useSetAtom } from 'jotai'
-import { AdditiveBlending, InstancedBufferAttribute, InstancedMesh, Object3D, PlaneGeometry } from 'three'
+import { InstancedBufferAttribute, InstancedMesh, Object3D, PlaneGeometry } from 'three'
 import { MeshBasicNodeMaterial } from 'three/webgpu'
-import { attribute, mix, positionGeometry, smoothstep, uniform, vec3 } from 'three/tsl'
+import { attribute, mix, uniform, vec3 } from 'three/tsl'
 import { SUTRA_CHARS, COLS_PER_LINE, GRID_COLUMNS, indexAt } from '../content/sutra.ts'
-import { glyphGeometry } from './glyphs.ts'
+import { glyphGeometry, sdfCellOf } from './glyphs.ts'
 import {
   INK,
   INK_RESTING,
   FOCUS,
-  FOCUS_GLOW,
+  GLOW_PLANE,
+  createGlowMaterial,
   inkDensity,
   inkShade,
   inkAlpha,
@@ -31,11 +32,6 @@ import { root, childrenOf } from '../content/loader.ts'
 /** 各文字が基準位置から微小にゆらぐ幅（ワールド単位） */
 const SWAY = 0.035
 
-/**
- * 発光の滲みの一辺（1 = 字面の一辺）。字より少しはみ出すだけに留める。
- * 大きくすると隣の升まで滲み、どの字が光っているのか読み取れなくなる。
- */
-const GLOW_SIZE = 1.3
 /** 滲みの最大の濃さ */
 const GLOW_STRENGTH = 0.5
 
@@ -106,7 +102,8 @@ function swayAt(index: number, t: number): { x: number; y: number; rotation: num
  * フォーカスされた字の裏に焚く滲み。
  *
  * 字ごとに持たせると描画呼び出しが倍になるので、紙面ぜんぶで 1 つのメッシュにまとめる。
- * 板は字と同じジオメトリではなく矩形で、中心から縁へ落ちる減衰だけで滲みを作る。
+ * 板は矩形だが、光の形は字ごとの符号付き距離場（`createGlowMaterial`）が決めるので、
+ * どの字も同じ丸い光にはならず、滲みの縁が字形をなぞる。
  */
 function FocusGlow({ indexToNode }: { indexToNode: (string | null)[] }) {
   const meshRef = useRef<InstancedMesh>(null)
@@ -117,29 +114,31 @@ function FocusGlow({ indexToNode }: { indexToNode: (string | null)[] }) {
   const focus = useMemo(() => new InstancedBufferAttribute(new Float32Array(count), 1), [count])
   const focusTarget = useMemo(() => new Float32Array(count), [count])
 
+  /** 字ごとの距離場アトラスのセル番号。グリフが無い字は -1（マテリアル側で消える） */
+  const cell = useMemo(() => {
+    const array = new Float32Array(count)
+    SUTRA_CHARS.forEach((char, i) => {
+      array[i] = sdfCellOf(char) ?? -1
+    })
+    return new InstancedBufferAttribute(array, 1)
+  }, [count])
+
   const geometry = useMemo(() => {
     const plane = new PlaneGeometry(1, 1)
     plane.setAttribute('aFocus', focus)
+    plane.setAttribute('aCell', cell)
     return plane
-  }, [focus])
+  }, [focus, cell])
   useEffect(() => () => geometry.dispose(), [geometry])
 
-  const material = useMemo(() => {
-    const nodeMaterial = new MeshBasicNodeMaterial({
-      transparent: true,
-      depthWrite: false,
-      toneMapped: false,
-      blending: AdditiveBlending,
-    })
-    const focused = attribute<'float'>('aFocus', 'float')
-    // 板の中心から縁へ向かって落とす。矩形の角を残さないよう半径 0.5 で切る。
-    // smoothstep の端は昇順で渡す（降順は環境によって未定義）ので、立ち上がりを作って反転させる
-    const falloff = smoothstep(0, 0.5, positionGeometry.xy.length()).oneMinus()
-    nodeMaterial.colorNode = vec3(FOCUS_GLOW.r, FOCUS_GLOW.g, FOCUS_GLOW.b)
-    // 二乗して芯を締める。線形だと縁まで一様に明るく、滲みの範囲だけが広く見える
-    nodeMaterial.opacityNode = falloff.mul(falloff).mul(focused).mul(GLOW_STRENGTH)
-    return nodeMaterial
-  }, [])
+  const material = useMemo(
+    () =>
+      createGlowMaterial(
+        attribute<'float'>('aCell', 'float'),
+        attribute<'float'>('aFocus', 'float').mul(GLOW_STRENGTH),
+      ),
+    [],
+  )
   useEffect(() => () => material.dispose(), [material])
 
   // hover の変化は行き先を書くだけ。実際の濃さはフレーム側で寄せる
@@ -169,7 +168,7 @@ function FocusGlow({ indexToNode }: { indexToNode: (string | null)[] }) {
       const { x, y } = swayAt(i, t)
       // 滲みは字の裏。加算合成なので墨そのものを白く飛ばさない
       dummy.position.set(x, y, -0.05)
-      dummy.scale.setScalar(GLOW_SIZE)
+      dummy.scale.setScalar(GLOW_PLANE)
       dummy.updateMatrix()
       mesh.setMatrixAt(i, dummy.matrix)
     }

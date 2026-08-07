@@ -5,18 +5,23 @@
  * ここは**唯一の GPU 側の写し**とし、増やすときは styles.css と対で更新する。
  */
 
-import { Color } from 'three'
+import { AdditiveBlending, Color } from 'three'
 import { MeshBasicNodeMaterial, type Node } from 'three/webgpu'
 import {
   clamp,
+  float,
   mix,
   mx_fractal_noise_float,
   mx_noise_float,
   positionGeometry,
   smoothstep,
+  step,
+  texture,
   uniform,
+  vec2,
   vec3,
 } from 'three/tsl'
+import { SDF, glyphSdfTexture } from './glyphs.ts'
 
 export const INK = new Color('#f2f0ec')
 export const TEXT_DIM = new Color('#8e8a84')
@@ -121,6 +126,67 @@ export function inkShade(density: Node<'float'>): Node<'float'> {
 /** 濃さ → 不透明度の係数。かすれた部分だけ地を透かす */
 export function inkAlpha(density: Node<'float'>): Node<'float'> {
   return mix(0.3, 1, density)
+}
+
+/* ---- 発光の滲み -----------------------------------------------------------
+ * 光は字そのものから出る。板の中心から放射させると、どの字でも同じ丸い光になり
+ * 「字が光っている」ではなく「字の裏に電球がある」絵になってしまう。
+ * 前計算した符号付き距離場（scripts/sdf.ts）を引き、輪郭からの距離だけで減衰させると、
+ * 滲みの縁が字形をなぞる。画のあいだの空きにも光が回り込まない。
+ */
+
+/** 滲みを載せる板の一辺（字面 = 1 に対する比）。距離場のセルと一致させる */
+export const GLOW_PLANE = 2 * SDF.extent
+
+/** 芯の届く距離（字面座標）。輪郭のすぐ外を強く光らせる */
+const GLOW_NEAR = 0.08
+/** 裾の届く距離。`SDF.spread` を超えると距離場が飽和して縁が切れる */
+const GLOW_FAR = 0.26
+
+/**
+ * 距離場から滲みの強さを引く。`local` はセル内の 0..1 座標、`cell` はアトラスのセル番号。
+ * 内側は 1 に飽和し、外へ向かって芯と裾の 2 段で落ちる。
+ */
+function glowFalloff(cell: Node<'float'>, local: Node<'vec2'>): Node<'float'> {
+  const atlas = glyphSdfTexture()
+  if (!atlas) return float(0)
+
+  // グリフが無い字はセル番号を持たない（-1）。uv が壊れないよう 0 に丸め、最後に消す
+  const valid = step(-0.5, cell)
+  const safe = cell.max(0)
+  const uv = vec2(
+    safe.mod(SDF.columns).add(local.x).div(SDF.columns),
+    safe.div(SDF.columns).floor().add(local.y).div(SDF.rows),
+  )
+  // 格納は 0.5 が輪郭・上が内側。外向きの距離（字面座標）へ戻す
+  const distance = float(0.5).sub(texture(atlas, uv).r).mul(2 * SDF.spread)
+
+  const band = (radius: number): Node<'float'> => {
+    const t = clamp(distance.div(radius).oneMinus(), 0, 1)
+    // 二乗して芯を締める。線形だと裾まで一様に明るく、滲みの範囲だけが広く見える
+    return t.mul(t)
+  }
+
+  return band(GLOW_NEAR).mul(0.7).add(band(GLOW_FAR).mul(0.3)).mul(valid)
+}
+
+/**
+ * 字形に沿った滲みのマテリアル。一辺 `GLOW_PLANE` の板（PlaneGeometry(1,1) を拡大）に貼る。
+ *
+ * `cell` はアトラスのセル番号（インスタンス属性でもユニフォームでもよい）、
+ * `amount` は 0〜1 の濃さ。加算合成なので、字の墨そのものは白く飛ばない。
+ */
+export function createGlowMaterial(cell: Node<'float'>, amount: Node<'float'>, color: Color = FOCUS_GLOW): MeshBasicNodeMaterial {
+  const material = new MeshBasicNodeMaterial({
+    transparent: true,
+    depthWrite: false,
+    toneMapped: false,
+    blending: AdditiveBlending,
+  })
+  material.colorNode = vec3(color.r, color.g, color.b)
+  // PlaneGeometry(1,1) の字面ローカル [-0.5, 0.5] を、セル内の 0..1 へ
+  material.opacityNode = glowFalloff(cell, positionGeometry.xy.add(0.5)).mul(amount)
+  return material
 }
 
 /**

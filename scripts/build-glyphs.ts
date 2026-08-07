@@ -8,6 +8,7 @@
  * 出力
  *   public/glyphs/mesh.bin      … 頂点座標(f32 xy) + インデックス(u32) を全字ぶん連結
  *   public/glyphs/particles.bin … 粒子ホームポジション(f32 xy) を全字ぶん連結
+ *   public/glyphs/sdf.bin       … 符号付き距離場(u8) を 1 枚のアトラスに敷き詰めたもの
  *   src/generated/glyphs.json   … 上記へのオフセット表
  *
  * 座標系は three に合わせて **Y 上向き**、字面が `[-0.5, 0.5]^2` に収まるよう正規化する。
@@ -18,6 +19,7 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join, basename } from 'node:path'
 import { ShapeUtils, Vector2 } from 'three'
 import { flattenPath, toRegions, parseTransform, signedArea, type Vec2 } from './svg-path.ts'
+import { buildSdf, SDF_RES, SDF_EXTENT, SDF_SPREAD } from './sdf.ts'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const SVG_DIR = join(ROOT, 'assets/svg')
@@ -30,11 +32,16 @@ const PARTICLES_PER_GLYPH = 4000
 /** 円相は面積が大きいので多めに配る */
 const PARTICLES_FOR_CIRCLE = 20000
 
+/** SDF アトラスの列数。行数は字数から決まる */
+const SDF_COLUMNS = 16
+
 interface Built {
   key: string
   positions: Float32Array
   indices: Uint32Array
   particles: Float32Array
+  /** 符号付き距離場 1 字ぶん（SDF_RES × SDF_RES の u8、下から上） */
+  sdf: Uint8Array
 }
 
 function readSvg(path: string): { viewBox: [number, number, number, number]; paths: string[]; transform: string | null } {
@@ -185,6 +192,7 @@ function build(key: string, file: string, particleCount: number, seed: number): 
     positions: positionArray,
     indices: indexArray,
     particles: sampleTriangles(positionArray, indexArray, particleCount, seed),
+    sdf: buildSdf(positionArray, indexArray),
   }
 }
 
@@ -223,11 +231,26 @@ function main(): void {
   const mesh = Buffer.alloc(meshBytes)
   const particles = Buffer.alloc(particleBytes)
 
+  // SDF は 1 枚のアトラスへ。字ごとにテクスチャを持つと描画呼び出しごとに束ね直すことになる
+  const sdfRows = Math.ceil(built.length / SDF_COLUMNS)
+  const sdfWidth = SDF_COLUMNS * SDF_RES
+  const sdfHeight = sdfRows * SDF_RES
+  const sdf = Buffer.alloc(sdfWidth * sdfHeight)
+
   let meshOffset = 0
   let particleOffset = 0
   const index: Record<string, unknown> = {}
 
-  for (const g of built) {
+  built.forEach((g, cell) => {
+    const column = cell % SDF_COLUMNS
+    const row = Math.floor(cell / SDF_COLUMNS)
+    for (let y = 0; y < SDF_RES; y++) {
+      const dest = (row * SDF_RES + y) * sdfWidth + column * SDF_RES
+      sdf.set(g.sdf.subarray(y * SDF_RES, (y + 1) * SDF_RES), dest)
+    }
+  })
+
+  for (const [cell, g] of built.entries()) {
     const positionOffset = meshOffset
     Buffer.from(g.positions.buffer, g.positions.byteOffset, g.positions.byteLength).copy(mesh, meshOffset)
     meshOffset += g.positions.byteLength
@@ -244,6 +267,7 @@ function main(): void {
       indexCount: g.indices.length,
       particleOffset,
       particleCount: g.particles.length / 2,
+      sdfCell: cell,
     }
     particleOffset += g.particles.byteLength
   }
@@ -252,15 +276,31 @@ function main(): void {
   mkdirSync(OUT_TS, { recursive: true })
   writeFileSync(join(OUT_BIN, 'mesh.bin'), mesh)
   writeFileSync(join(OUT_BIN, 'particles.bin'), particles)
+  writeFileSync(join(OUT_BIN, 'sdf.bin'), sdf)
   writeFileSync(
     join(OUT_TS, 'glyphs.json'),
-    JSON.stringify({ particlesPerGlyph: PARTICLES_PER_GLYPH, glyphs: index }, null, 2) + '\n',
+    JSON.stringify(
+      {
+        particlesPerGlyph: PARTICLES_PER_GLYPH,
+        sdf: {
+          res: SDF_RES,
+          columns: SDF_COLUMNS,
+          rows: sdfRows,
+          extent: SDF_EXTENT,
+          spread: SDF_SPREAD,
+        },
+        glyphs: index,
+      },
+      null,
+      2,
+    ) + '\n',
   )
 
   const totalParticles = built.reduce((n, g) => n + g.particles.length / 2, 0)
   console.log(
     `glyphs: ${built.length} 件 / mesh ${(meshBytes / 1e6).toFixed(2)}MB / ` +
-      `particles ${(particleBytes / 1e6).toFixed(2)}MB (${totalParticles.toLocaleString()} 点)`,
+      `particles ${(particleBytes / 1e6).toFixed(2)}MB (${totalParticles.toLocaleString()} 点) / ` +
+      `sdf ${(sdf.byteLength / 1e6).toFixed(2)}MB (${sdfWidth}x${sdfHeight})`,
   )
 }
 

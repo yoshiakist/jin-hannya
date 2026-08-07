@@ -32,7 +32,7 @@ src/
   content/  schema.ts loader.ts sutra.ts
   world/    paper.ts(格子寸法・index→(column,row)) pan.ts(可動域・ドラッグ・拡大)
   audio/    index.ts
-scripts/    build-glyphs.ts svg-path.ts validate-graph.ts
+scripts/    build-glyphs.ts svg-path.ts sdf.ts(グロー用距離場) validate-graph.ts
 content/    sutra.txt / graph/*.yaml(15) / docs/*.md(15)
 assets/     svg/(筆文字118) pattern/circle.svg bgm/ sfx/ voice/(未収録)
 ```
@@ -45,7 +45,8 @@ assets/     svg/(筆文字118) pattern/circle.svg bgm/ sfx/ voice/(未収録)
 - **経文本文・解説文をコードや README、コミットメッセージに複製しない。** 出所は `content/graph/*.yaml` の `summary` と `content/docs/*.md` だけ。
 - **`COLS_PER_LINE = 16`**（`src/content/sutra.ts`）は 1 列に収まる字数の**上限**。L0 の列の切れ目は `content/sutra.txt` の**改行位置**に従う（1 行 = 1 列、20 列）。格子座標は割り算で求めず `GRID_CELLS` / `cellOf()` / `indexAt(column, row)` を引く。
 - `content/sutra.txt` は**文字インデックスの唯一の基準**。ローダが空白を除去して正規形を作り、`range` はその正規形に対する半開区間 `[start, end)`。文字の増減は全 `range` の見直しとセット。行の追加・移動は `range` を動かさないが紙面の見え方を変える。
-- **ランタイムで SVG を触らない。** メッシュと粒子サンプルはビルド時に `scripts/build-glyphs.ts` が前計算する。
+- **ランタイムで SVG を触らない。** メッシュ・粒子サンプル・グロー用の符号付き距離場はビルド時に `scripts/build-glyphs.ts` が前計算する。
+- 発光の滲みは**字ごとの距離場**（`createGlowMaterial`）で出す。板の中心から放射させると、どの字でも同じ丸い光になる。
 - 用語を混ぜない: **深度** `L0/L1/L2…`（ユーザーの階層）と **性能ティア** `Tier 1(WebGPU)/2(WebGL2)/3(WebGL不可)`（描画能力）。「Tier」は性能の話にのみ使う。
 - 遷移は相を持つ FSM（`idle → hovered → zooming-in → focused → zooming-out`）。`zooming-*` の間は入力を殺す。
 - 演出は**潜ると戻るで非対称**。潜る = 非フォーカス字が散開・生存字はメッシュのまま連続移動／戻る = 現在字が再配置されつつ粒子がフェードインして凝集。逆再生にはしない。

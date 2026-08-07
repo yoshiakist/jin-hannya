@@ -12,9 +12,10 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { useAtomValue, useSetAtom } from 'jotai'
-import { BufferGeometry, Color, Group, Line, LineBasicMaterial, MeshBasicMaterial, Vector3 } from 'three'
-import { glyphGeometry, glyphParticles, CIRCLE_KEY } from './glyphs.ts'
-import { INK, FOCUS, STROKE, createInkMaterial, approach } from './materials.ts'
+import { BufferGeometry, Color, Group, Line, LineBasicMaterial, PlaneGeometry, Vector3 } from 'three'
+import { uniform } from 'three/tsl'
+import { glyphGeometry, glyphParticles, sdfCellOf, CIRCLE_KEY } from './glyphs.ts'
+import { INK, FOCUS, STROKE, GLOW_PLANE, createGlowMaterial, createInkMaterial, approach } from './materials.ts'
 import { VIEW_HEIGHT } from '../world/paper.ts'
 import { navAtom, currentNodeAtom, childNodesAtom, acceptsInputAtom } from '../nav/atoms.ts'
 import type { GraphNode } from '../content/schema.ts'
@@ -49,10 +50,8 @@ export function headlinePosition(index: number, perColumn: number, total: number
 /** 子の図の中心 x。左の解説と右の大書に挟まれた帯の中央に置く */
 const DIAGRAM_X = 0
 
-/** 発光の滲みが字面からはみ出す比率。広げるほど字の輪郭が溶けて読めなくなる */
-const GLOW_SCALE = 1.03
-/** 滲みの最大の濃さ */
-const GLOW_OPACITY = 0.28
+/** 滲みの最大の濃さ。広がりは距離場が決めるので、ここで持つのは強さだけ */
+const GLOW_OPACITY = 0.5
 
 export function NodeStage() {
   const node = useAtomValue(currentNodeAtom)
@@ -272,12 +271,18 @@ export function Glyph({
   ink.color.value.copy(color)
   ink.opacity.value = opacity
 
-  /** 発光の滲み。hover していない間も置いたままにし、不透明度だけで出し入れする */
-  const glowMaterial = useMemo(
-    () => new MeshBasicMaterial({ color: FOCUS, transparent: true, opacity: 0, toneMapped: false }),
-    [],
-  )
-  useEffect(() => () => glowMaterial.dispose(), [glowMaterial])
+  /**
+   * 発光の滲み。hover していない間も置いたままにし、濃さだけで出し入れする。
+   * 光の形は字の符号付き距離場から引くので、字を拡大コピーした板より輪郭が字に忠実になる。
+   */
+  const glow = useMemo(() => {
+    const amount = uniform(0)
+    const cell = uniform(sdfCellOf(char) ?? -1)
+    return { material: createGlowMaterial(cell, amount), amount }
+  }, [char])
+  useEffect(() => () => glow.material.dispose(), [glow])
+  const glowGeometry = useMemo(() => new PlaneGeometry(1, 1), [])
+  useEffect(() => () => glowGeometry.dispose(), [glowGeometry])
   const focusAmount = useRef(0)
   ink.scale.value = size
   // 種は字ごとに固定。同じ字は常に同じムラになるので、遷移で拡大しても模様が飛ばない
@@ -289,7 +294,7 @@ export function Glyph({
     focusAmount.current = approach(focusAmount.current, focused ? 1 : 0, delta)
     // 墨から琥珀へじわりと寄せ、同じ量で滲みを焚く
     ink.color.value.copy(color).lerp(FOCUS, focusAmount.current)
-    glowMaterial.opacity = focusAmount.current * GLOW_OPACITY
+    glow.amount.value = focusAmount.current * GLOW_OPACITY
 
     const group = groupRef.current
     if (!group) return
@@ -306,8 +311,8 @@ export function Glyph({
   return (
     <group ref={groupRef} position={position}>
       <mesh geometry={geometry} material={ink.material} scale={size} />
-      {/* グローの近距離側。遠距離側は DOM 側の bloom 相当で補う */}
-      <mesh geometry={geometry} material={glowMaterial} scale={size * GLOW_SCALE} position={[0, 0, -0.01]} />
+      {/* 滲みは字の裏。板は字面より一回り大きく、光の届く範囲は距離場が切る */}
+      <mesh geometry={glowGeometry} material={glow.material} scale={size * GLOW_PLANE} position={[0, 0, -0.01]} />
     </group>
   )
 }
