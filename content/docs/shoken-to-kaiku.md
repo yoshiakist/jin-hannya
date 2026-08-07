@@ -1,5 +1,5 @@
 ---
-id: shoken-goun-kaiku
+id: shoken-to-kaiku
 ---
 
 わずか六字だが、この経が言いたいことはここで終わっている。

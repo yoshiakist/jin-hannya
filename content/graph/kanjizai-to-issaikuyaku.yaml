@@ -1,9 +1,9 @@
-id: kanjizai-gyojin
+id: kanjizai-to-issaikuyaku
 kind: phrase
 label: 観自在菩薩行深般若波羅蜜多時照見五蘊皆空度一切苦厄
 reading: かんじざいぼさつ ぎょうじんはんにゃはらみたじ しょうけんごうんかいくう どいっさいくやく
 summary: 観自在菩薩が深い智慧の実践のなかで、五つの構成要素がみな空であると見きわめ、あらゆる苦しみを超えた。
 parent: shingyo
-children: [shoken-goun-kaiku]
+children: [shoken-to-kaiku]
 layout: none
 range: [10, 35]

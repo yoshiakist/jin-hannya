@@ -1,5 +1,5 @@
 ---
-id: kanjizai-gyojin
+id: kanjizai-to-issaikuyaku
 ---
 
 経の全体がこの一文に畳まれている。誰が、何をして、何を見て、その結果どうなったか。すべてがここにある。

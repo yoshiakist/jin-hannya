@@ -340,7 +340,7 @@ sanskrit:
   text: pañca-skandha    # ラテン翻字
   kana: パンチャ・スカンダ
 summary: …               # 右中段の短い定義（数十字）
-parent: shoken-goun-kaiku
+parent: shoken-to-kaiku
 children: [shiki-rupa, ju, so, gyo, shiki-vijnana]
 related: [juuhachi-kai]  # 隣接ノード（将来用）
 layout: circle           # none | circle | column
@@ -350,6 +350,24 @@ audio: goun.m4a          # 読み上げ音源（assets/voice/ 配下のファイ
 
 - `layout` は**ノード側が持つ**。円相か縦連結かは概念ごとに異なるため、描画側で決めない。
 - `label` に含まれる各文字は `assets/svg/` に対応する SVG が存在しなければならない。
+
+#### `id` の命名規約
+
+`id` は一意のスラッグ（ローマ字・小文字・ハイフン区切り）で、**ファイル名は `<id>.yaml` / `<id>.md` と一致させる**（`content/graph/` と `content/docs/` の両方）。
+
+`kind` ごとに次の形を取る。
+
+| `kind` | 形 | 例 |
+|---|---|---|
+| `sutra` | 経の名 | `shingyo` |
+| `phrase` | **`<start>-to-<end>`** | `kanjizai-to-issaikuyaku` |
+| `term` | 語そのものの読み | `goun`・`shiki-rupa` |
+
+`phrase` の `start` / `end` は、その句の**先頭の語**と**末尾の語**の読みをローマ字にしたもの。
+句は数文字から数十文字まで長さがまちまちで、`label` 全体をスラッグにすると破綻するため、両端で挟んで示す。
+`観自在菩薩……度一切苦厄` なら `kanjizai-to-issaikuyaku`。
+両端の語は文法上の切れ目で取る（`観自在菩薩` の `菩薩`、`度一切苦厄` の `度` のような接辞は落としてよい）。
+句が短く両端が同じ語になる場合は `-to-` を使わず、その語の読みだけを `id` にする。
 
 #### `range` — 全文に対する文字インデックス範囲
 

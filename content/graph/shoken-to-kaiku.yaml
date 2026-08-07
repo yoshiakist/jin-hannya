@@ -1,9 +1,9 @@
-id: shoken-goun-kaiku
+id: shoken-to-kaiku
 kind: phrase
 label: 照見五蘊皆空
 reading: しょうけん ごうん かいくう
 summary: 五蘊がことごとく空であると照らし見た。この経の結論が最初に置かれている。
-parent: kanjizai-gyojin
+parent: kanjizai-to-issaikuyaku
 children: [goun]
 layout: none
 range: [24, 30]
