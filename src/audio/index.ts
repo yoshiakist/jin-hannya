@@ -19,6 +19,12 @@ const LOOP_CROSSFADE_SEC = 4
 /** 読み上げ中に BGM を絞る量（dB 相当のゲイン比） */
 const DUCK_GAIN = 0.45
 
+/**
+ * BGM の上限ゲイン。音量スライダの 0〜1 はこの範囲へ写す。
+ * 最大でもこれ以上は出さない（BGM が前に出ると読経の邪魔になる）。
+ */
+const BGM_CEILING = 1 / 4
+
 // Vite に解決させる。new URL(..., import.meta.url) では dev と build で解決先がずれる
 import BGM_URL from '#assets/bgm/sample_music_01.mp3?url'
 import WOOSH_URL from '#assets/sfx/woosh.wav?url'
@@ -168,9 +174,11 @@ function startStreamingBgm(ctx: AudioContext): () => void {
   }
 }
 
+/** volume は UI の 0〜1。実ゲインは BGM_CEILING を上限に写した値になる */
 export function setBgmVolume(volume: number): void {
   if (!bgmGain || !context) return
-  bgmGain.gain.setTargetAtTime(Math.max(0, Math.min(1, volume)), context.currentTime, 0.08)
+  const gain = Math.max(0, Math.min(1, volume)) * BGM_CEILING
+  bgmGain.gain.setTargetAtTime(gain, context.currentTime, 0.08)
 }
 
 export function setMuted(muted: boolean): void {
