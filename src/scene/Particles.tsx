@@ -19,7 +19,7 @@ import { useFrame } from '@react-three/fiber'
 import { useAtomValue } from 'jotai'
 import { InstancedBufferAttribute } from 'three'
 import { PointsNodeMaterial } from 'three/webgpu'
-import { bufferAttribute, uniform, mix, float, vec3, smoothstep, sin, cos } from 'three/tsl'
+import { bufferAttribute, uniform, mix, float, vec3, smoothstep, sin, cos, uv, length } from 'three/tsl'
 import { glyphParticles } from './glyphs.ts'
 import { FOCUS_GLOW, INK } from './materials.ts'
 import { tierAtom, particleScaleAtom } from '../nav/atoms.ts'
@@ -32,7 +32,7 @@ export type ParticleMode = 'disperse' | 'converge'
 const PARTICLE_DENSITY = 0.3
 
 /** 点の基準サイズ（画面ピクセル）。粒子ごとに 1〜2 倍のばらつきを持たせる */
-const POINT_SIZE = 1.5
+const POINT_SIZE = 1.8
 
 /**
  * 上向きへの偏り。飛距離に `1 + UP_BIAS * 上向き成分` を掛けるので、
@@ -186,9 +186,13 @@ export function TransitionParticles({
       material.positionNode = mix(homeNode, awayNode, smoothstep(0, 1, t))
     }
 
+    // 1 粒 = 板なので、そのままだと正方形に出る。板の uv で中心からの距離を測って円に抜く。
+    // 数 px の粒なので縁は硬く切らず、外側 2 割ほどを滑らかに落としてジャギを消す
+    const disc = smoothstep(0.5, 0.32, length(uv().sub(0.5)))
+
     // 散り際・現れ際に消える。芯の色は琥珀寄り、落ち着いた側は墨の白
     const fade = float(1).sub(smoothstep(0.55, 1, t))
-    material.opacityNode = fade.mul(0.85)
+    material.opacityNode = fade.mul(disc).mul(0.85)
     material.colorNode = mix(
       vec3(FOCUS_GLOW.r, FOCUS_GLOW.g, FOCUS_GLOW.b),
       vec3(INK.r, INK.g, INK.b),
