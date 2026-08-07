@@ -292,7 +292,8 @@ body {
   inset: 0;
   display: flex;
   flex-direction: row-reverse;
-  justify-content: flex-start;
+  /* 収まるなら中央ぞろえ、はみ出すなら（row-reverse なので）右端ぞろえに落ちる */
+  justify-content: safe center;
   align-items: center;
   gap: 0.34em;
   padding-inline: 6vw;

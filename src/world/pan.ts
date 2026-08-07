@@ -17,12 +17,15 @@ import { CELL_X, PAPER_WIDTH, VIEW_HEIGHT } from './paper.ts'
 export interface PanBounds {
   /** 最も左まで送った状態のカメラ x */
   min: number
-  /** 読み始めの位置。紙面の右上に相当するカメラ x */
+  /** 読み始めの位置。紙面がはみ出すなら右端ぞろえ、収まるなら中央ぞろえのカメラ x */
   max: number
 }
 
 /** 画面端と紙面のあいだに残す余白（ワールド単位） */
 const EDGE_MARGIN = CELL_X
+
+/** 紙面の左右の余白が等しくなるカメラ x。第 1 列が x = 0、最終列が x = -PAPER_WIDTH にある */
+const CENTERED = -PAPER_WIDTH / 2
 
 /**
  * ビューポート半幅（ワールド単位）からパンの可動域を出す。
@@ -33,8 +36,9 @@ export function panBoundsFor(halfWidth: number): PanBounds {
   const max = -(halfWidth - EDGE_MARGIN)
   // 最終列を画面の左端へ寄せた位置が左端
   const min = -PAPER_WIDTH + halfWidth - EDGE_MARGIN
-  // 紙面が画面より狭ければ動かさない（右端寄せのまま固定）
-  return min >= max ? { min: max, max } : { min, max }
+  // 紙面が余白ごと画面に収まるなら送る先が無い。中央ぞろえで固定する。
+  // 収まらないなら右端ぞろえ（= max）から読み始め、左へ送っていく
+  return min >= max ? { min: CENTERED, max: CENTERED } : { min, max }
 }
 
 /** ビューポートの寸法（px）からカメラのビューポート半幅（ワールド単位）を出す */
