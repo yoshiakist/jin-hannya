@@ -12,9 +12,9 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { useAtomValue, useSetAtom } from 'jotai'
-import { BufferGeometry, Color, Group, Line, LineBasicMaterial, Vector3 } from 'three'
+import { BufferGeometry, Color, Group, Line, LineBasicMaterial, MeshBasicMaterial, Vector3 } from 'three'
 import { glyphGeometry, glyphParticles, CIRCLE_KEY } from './glyphs.ts'
-import { INK, FOCUS, STROKE, createInkMaterial } from './materials.ts'
+import { INK, FOCUS, STROKE, createInkMaterial, approach } from './materials.ts'
 import { VIEW_HEIGHT } from '../world/paper.ts'
 import { navAtom, currentNodeAtom, childNodesAtom, acceptsInputAtom } from '../nav/atoms.ts'
 import type { GraphNode } from '../content/schema.ts'
@@ -48,6 +48,11 @@ export function headlinePosition(index: number, perColumn: number, total: number
 }
 /** 子の図の中心 x。左の解説と右の大書に挟まれた帯の中央に置く */
 const DIAGRAM_X = 0
+
+/** 発光の滲みが字面からはみ出す比率。広げるほど字の輪郭が溶けて読めなくなる */
+const GLOW_SCALE = 1.03
+/** 滲みの最大の濃さ */
+const GLOW_OPACITY = 0.28
 
 export function NodeStage() {
   const node = useAtomValue(currentNodeAtom)
@@ -153,7 +158,6 @@ function ChildNode({
   const hoveredId = useAtomValue(navAtom).hoveredId
   const hovered = hoveredId === node.id
   const chars = useMemo(() => Array.from(node.label), [node.label])
-  const color = hovered ? FOCUS : INK
 
   const width = size * (chars.length * 1.05 + 1.6)
   const height = size * 1.9
@@ -171,7 +175,7 @@ function ChildNode({
         if (accepts) dispatch({ type: 'enter', id: node.id })
       }}
     >
-      {frame && <RoundedFrame width={width} height={height} color={hovered ? FOCUS : STROKE} />}
+      {frame && <RoundedFrame width={width} height={height} focused={hovered} />}
       {/* 枠の中では字を横に並べる。縦組みの図では 1 字ずつ縦に積む */}
       {chars.map((char, i) => (
         <Glyph
@@ -185,8 +189,8 @@ function ChildNode({
                 [0, ((chars.length - 1) / 2 - i) * size * 1.08, 0]
           }
           size={size}
-          color={color}
-          glow={hovered}
+          color={INK}
+          focused={hovered}
         />
       ))}
       {/* 当たり判定。字の隙間で hover が切れないように矩形で覆う。
@@ -204,7 +208,7 @@ function ChildNode({
  * `<line>` は JSX 上で SVG の line と衝突し、WebGPURenderer は LineLoop を描かないため、
  * THREE.Line を自前で組んで primitive として差し込む。
  */
-function RoundedFrame({ width, height, color }: { width: number; height: number; color: Color }) {
+function RoundedFrame({ width, height, focused }: { width: number; height: number; focused: boolean }) {
   const line = useMemo(() => {
     // 角丸半径は高さの約 1/4（img_02 のプロポーション）
     const radius = height / 4
@@ -232,8 +236,12 @@ function RoundedFrame({ width, height, color }: { width: number; height: number;
     )
   }, [width, height])
 
-  // 色だけは hover で切り替わるので、毎レンダーで流し込む
-  ;(line.material as LineBasicMaterial).color.copy(color)
+  // 色は hover でじわりと動く。React の再レンダーではなくフレームごとに寄せる
+  const amount = useRef(0)
+  useFrame((_, delta) => {
+    amount.current = approach(amount.current, focused ? 1 : 0, delta)
+    ;(line.material as LineBasicMaterial).color.copy(STROKE).lerp(FOCUS, amount.current)
+  })
 
   return <primitive object={line} />
 }
@@ -245,14 +253,15 @@ export function Glyph({
   size,
   color,
   opacity = 1,
-  glow = false,
+  focused = false,
 }: {
   char: string
   position: [number, number, number]
   size: number
   color: Color
   opacity?: number
-  glow?: boolean
+  /** 琥珀への発色と滲み。切り替えは瞬時ではなく FOCUS_FADE 秒かけて渡る */
+  focused?: boolean
 }) {
   const geometry = useMemo(() => glyphGeometry(char), [char])
   const groupRef = useRef<Group>(null)
@@ -262,13 +271,26 @@ export function Glyph({
   useEffect(() => () => ink.material.dispose(), [ink])
   ink.color.value.copy(color)
   ink.opacity.value = opacity
+
+  /** 発光の滲み。hover していない間も置いたままにし、不透明度だけで出し入れする */
+  const glowMaterial = useMemo(
+    () => new MeshBasicMaterial({ color: FOCUS, transparent: true, opacity: 0, toneMapped: false }),
+    [],
+  )
+  useEffect(() => () => glowMaterial.dispose(), [glowMaterial])
+  const focusAmount = useRef(0)
   ink.scale.value = size
   // 種は字ごとに固定。同じ字は常に同じムラになるので、遷移で拡大しても模様が飛ばない
   ink.seed.value = ((char.codePointAt(0) ?? 0) % 251) / 251 * 8
 
   // 大書もわずかにゆらぐ。紙面と同じ運動則にすることで、潜っても同じ場だと分かる
   const phase = useMemo(() => (char.charCodeAt(0) % 97) / 97 * Math.PI * 2, [char])
-  useFrame(({ clock }) => {
+  useFrame(({ clock }, delta) => {
+    focusAmount.current = approach(focusAmount.current, focused ? 1 : 0, delta)
+    // 墨から琥珀へじわりと寄せ、同じ量で滲みを焚く
+    ink.color.value.copy(color).lerp(FOCUS, focusAmount.current)
+    glowMaterial.opacity = focusAmount.current * GLOW_OPACITY
+
     const group = groupRef.current
     if (!group) return
     const t = clock.elapsedTime
@@ -285,11 +307,7 @@ export function Glyph({
     <group ref={groupRef} position={position}>
       <mesh geometry={geometry} material={ink.material} scale={size} />
       {/* グローの近距離側。遠距離側は DOM 側の bloom 相当で補う */}
-      {glow && (
-        <mesh geometry={geometry} scale={size * 1.06} position={[0, 0, -0.01]}>
-          <meshBasicMaterial color={FOCUS} transparent opacity={0.28} toneMapped={false} />
-        </mesh>
-      )}
+      <mesh geometry={geometry} material={glowMaterial} scale={size * GLOW_SCALE} position={[0, 0, -0.01]} />
     </group>
   )
 }

@@ -9,18 +9,35 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, type ThreeEvent } from '@react-three/fiber'
 import { useAtomValue, useSetAtom } from 'jotai'
-import { InstancedBufferAttribute, InstancedMesh, Object3D } from 'three'
+import { AdditiveBlending, InstancedBufferAttribute, InstancedMesh, Object3D, PlaneGeometry } from 'three'
 import { MeshBasicNodeMaterial } from 'three/webgpu'
-import { attribute, mix, uniform, vec3 } from 'three/tsl'
+import { attribute, mix, positionGeometry, smoothstep, uniform, vec3 } from 'three/tsl'
 import { SUTRA_CHARS, COLS_PER_LINE, GRID_COLUMNS, indexAt } from '../content/sutra.ts'
 import { glyphGeometry } from './glyphs.ts'
-import { INK, INK_RESTING, FOCUS, inkDensity, inkShade, inkAlpha } from './materials.ts'
+import {
+  INK,
+  INK_RESTING,
+  FOCUS,
+  FOCUS_GLOW,
+  inkDensity,
+  inkShade,
+  inkAlpha,
+  approach,
+} from './materials.ts'
 import { CELL_X, CELL_Y, gridPosition } from '../world/paper.ts'
 import { navAtom, acceptsInputAtom } from '../nav/atoms.ts'
 import { root, childrenOf } from '../content/loader.ts'
 
 /** 各文字が基準位置から微小にゆらぐ幅（ワールド単位） */
 const SWAY = 0.035
+
+/**
+ * 発光の滲みの一辺（1 = 字面の一辺）。字より少しはみ出すだけに留める。
+ * 大きくすると隣の升まで滲み、どの字が光っているのか読み取れなくなる。
+ */
+const GLOW_SIZE = 1.3
+/** 滲みの最大の濃さ */
+const GLOW_STRENGTH = 0.5
 
 /**
  * 文字インデックス → 潜り先ノード id。
@@ -58,11 +75,108 @@ export function Paper() {
   return (
     <group>
       <HoverPlane indexToNode={indexToNode} />
+      <FocusGlow indexToNode={indexToNode} />
       {groups.map((group) => (
         <CharInstances key={group.char} group={group} indexToNode={indexToNode} />
       ))}
     </group>
   )
+}
+
+/**
+ * ゆらぎの位相。字ごとにずらす（同じ周期で揃うと格子が波打って見える）。
+ * 墨と発光の滲みが別のメッシュに分かれても同じ場所に居るよう、位相は index から引き直す。
+ */
+function swayPhase(index: number): number {
+  return (Math.sin(index * 12.9898) * 43758.5453) % (Math.PI * 2)
+}
+
+/** ゆらぎ込みの字の位置と傾き */
+function swayAt(index: number, t: number): { x: number; y: number; rotation: number } {
+  const [x, y] = gridPosition(index)
+  const phase = swayPhase(index)
+  return {
+    x: x + Math.sin(t * 0.55 + phase) * SWAY,
+    y: y + Math.cos(t * 0.41 + phase * 1.7) * SWAY,
+    rotation: Math.sin(t * 0.3 + phase) * 0.012,
+  }
+}
+
+/**
+ * フォーカスされた字の裏に焚く滲み。
+ *
+ * 字ごとに持たせると描画呼び出しが倍になるので、紙面ぜんぶで 1 つのメッシュにまとめる。
+ * 板は字と同じジオメトリではなく矩形で、中心から縁へ落ちる減衰だけで滲みを作る。
+ */
+function FocusGlow({ indexToNode }: { indexToNode: (string | null)[] }) {
+  const meshRef = useRef<InstancedMesh>(null)
+  const dummy = useMemo(() => new Object3D(), [])
+  const nav = useAtomValue(navAtom)
+  const count = SUTRA_CHARS.length
+
+  const focus = useMemo(() => new InstancedBufferAttribute(new Float32Array(count), 1), [count])
+  const focusTarget = useMemo(() => new Float32Array(count), [count])
+
+  const geometry = useMemo(() => {
+    const plane = new PlaneGeometry(1, 1)
+    plane.setAttribute('aFocus', focus)
+    return plane
+  }, [focus])
+  useEffect(() => () => geometry.dispose(), [geometry])
+
+  const material = useMemo(() => {
+    const nodeMaterial = new MeshBasicNodeMaterial({
+      transparent: true,
+      depthWrite: false,
+      toneMapped: false,
+      blending: AdditiveBlending,
+    })
+    const focused = attribute<'float'>('aFocus', 'float')
+    // 板の中心から縁へ向かって落とす。矩形の角を残さないよう半径 0.5 で切る。
+    // smoothstep の端は昇順で渡す（降順は環境によって未定義）ので、立ち上がりを作って反転させる
+    const falloff = smoothstep(0, 0.5, positionGeometry.xy.length()).oneMinus()
+    nodeMaterial.colorNode = vec3(FOCUS_GLOW.r, FOCUS_GLOW.g, FOCUS_GLOW.b)
+    // 二乗して芯を締める。線形だと縁まで一様に明るく、滲みの範囲だけが広く見える
+    nodeMaterial.opacityNode = falloff.mul(falloff).mul(focused).mul(GLOW_STRENGTH)
+    return nodeMaterial
+  }, [])
+  useEffect(() => () => material.dispose(), [material])
+
+  // hover の変化は行き先を書くだけ。実際の濃さはフレーム側で寄せる
+  useEffect(() => {
+    for (let i = 0; i < count; i++) {
+      focusTarget[i] = nav.hoveredId !== null && indexToNode[i] === nav.hoveredId ? 1 : 0
+    }
+  }, [nav.hoveredId, indexToNode, focusTarget, count])
+
+  useFrame(({ clock }, delta) => {
+    const mesh = meshRef.current
+    if (!mesh) return
+    const t = clock.elapsedTime
+
+    const array = focus.array as Float32Array
+    let moved = false
+    for (let i = 0; i < count; i++) {
+      const next = approach(array[i]!, focusTarget[i]!, delta)
+      if (next !== array[i]) {
+        array[i] = next
+        moved = true
+      }
+    }
+    if (moved) focus.needsUpdate = true
+
+    for (let i = 0; i < count; i++) {
+      const { x, y } = swayAt(i, t)
+      // 滲みは字の裏。加算合成なので墨そのものを白く飛ばさない
+      dummy.position.set(x, y, -0.05)
+      dummy.scale.setScalar(GLOW_SIZE)
+      dummy.updateMatrix()
+      mesh.setMatrixAt(i, dummy.matrix)
+    }
+    mesh.instanceMatrix.needsUpdate = true
+  })
+
+  return <instancedMesh ref={meshRef} args={[geometry, material, count]} frustumCulled={false} />
 }
 
 /**
@@ -122,11 +236,15 @@ function CharInstances({ group, indexToNode }: { group: CharGroup; indexToNode: 
   const dummy = useMemo(() => new Object3D(), [])
   const nav = useAtomValue(navAtom)
 
-  /** 0 = 通常、1 = フォーカス。hover が変わったときだけ書き換える */
+  /**
+   * 0 = 通常、1 = フォーカス。hover では行き先だけを書き、実際の値は
+   * `FOCUS_FADE` 秒かけてフレームごとに寄せる。
+   */
   const focus = useMemo(
     () => new InstancedBufferAttribute(new Float32Array(group.indices.length), 1),
     [group.indices.length],
   )
+  const focusTarget = useMemo(() => new Float32Array(group.indices.length), [group.indices.length])
 
   /** 墨のムラの種。同じ字が紙面に何度出ても違うムラになるよう、全文インデックスから引く */
   const seed = useMemo(() => {
@@ -149,6 +267,7 @@ function CharInstances({ group, indexToNode }: { group: CharGroup; indexToNode: 
 
   /** hover 中に、フォーカス外の字をどこまで沈めるか（0 = 沈めない） */
   const dim = useMemo(() => uniform(0), [])
+  const dimTarget = useRef(0)
 
   const material = useMemo(() => {
     const nodeMaterial = new MeshBasicNodeMaterial({ transparent: true, toneMapped: false })
@@ -163,36 +282,36 @@ function CharInstances({ group, indexToNode }: { group: CharGroup; indexToNode: 
     return nodeMaterial
   }, [dim])
 
-  /** ゆらぎの位相を字ごとにずらす。同じ周期で揃うと格子が波打って見えてしまう */
-  const phases = useMemo(
-    () => group.indices.map((index) => (Math.sin(index * 12.9898) * 43758.5453) % (Math.PI * 2)),
-    [group.indices],
-  )
-
-  // hover の変化はフレームごとではなく、変わったときに 1 度だけ反映する
+  // hover の変化そのものは変わったときに 1 度だけ拾い、補間はフレーム側に任せる
   useEffect(() => {
-    const array = focus.array as Float32Array
     group.indices.forEach((index, i) => {
-      array[i] = nav.hoveredId !== null && indexToNode[index] === nav.hoveredId ? 1 : 0
+      focusTarget[i] = nav.hoveredId !== null && indexToNode[index] === nav.hoveredId ? 1 : 0
     })
-    focus.needsUpdate = true
-    dim.value = nav.hoveredId ? 1 : 0
-  }, [nav.hoveredId, group.indices, indexToNode, focus, dim])
+    dimTarget.current = nav.hoveredId ? 1 : 0
+  }, [nav.hoveredId, group.indices, indexToNode, focusTarget])
 
-  useFrame(({ clock }) => {
+  useFrame(({ clock }, delta) => {
     const mesh = meshRef.current
     if (!mesh) return
     const t = clock.elapsedTime
 
+    // フォーカス量を行き先へ寄せる。全インスタンスが行き先に着いていれば転送を省く
+    const array = focus.array as Float32Array
+    let moved = false
+    for (let i = 0; i < array.length; i++) {
+      const next = approach(array[i]!, focusTarget[i]!, delta)
+      if (next !== array[i]) {
+        array[i] = next
+        moved = true
+      }
+    }
+    if (moved) focus.needsUpdate = true
+    dim.value = approach(dim.value, dimTarget.current, delta)
+
     group.indices.forEach((index, i) => {
-      const [x, y] = gridPosition(index)
-      const phase = phases[i]!
-      dummy.position.set(
-        x + Math.sin(t * 0.55 + phase) * SWAY,
-        y + Math.cos(t * 0.41 + phase * 1.7) * SWAY,
-        0,
-      )
-      dummy.rotation.z = Math.sin(t * 0.3 + phase) * 0.012
+      const { x, y, rotation } = swayAt(index, t)
+      dummy.position.set(x, y, 0)
+      dummy.rotation.z = rotation
       dummy.updateMatrix()
       mesh.setMatrixAt(i, dummy.matrix)
     })

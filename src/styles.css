@@ -313,10 +313,11 @@ body {
 .paper-fallback__char {
   color: var(--ink);
   line-height: 1;
+  /* 明滅の長さは GPU 側の FOCUS_FADE と揃える（src/scene/materials.ts） */
   transition:
-    color 0.45s ease,
-    opacity 0.45s ease,
-    text-shadow 0.45s ease;
+    color 0.4s ease,
+    opacity 0.4s ease,
+    text-shadow 0.4s ease;
 }
 
 .paper-fallback__char.is-dimmed {
@@ -325,10 +326,11 @@ body {
 
 .paper-fallback__char.is-focused {
   color: var(--focus);
-  /* グローは 2 段（近距離の強い滲み + 遠距離の弱い滲み） */
+  /* グローは 2 段（近距離の強い滲み + 遠距離の弱い滲み）。
+     広げると隣の升まで滲んで、どの字が光っているのか読み取れなくなる */
   text-shadow:
-    0 0 6px var(--focus-glow),
-    0 0 22px rgb(255 184 92 / 0.35);
+    0 0 3px var(--focus-glow),
+    0 0 11px rgb(255 184 92 / 0.35);
 }
 
 @media (prefers-reduced-motion: reduce) {

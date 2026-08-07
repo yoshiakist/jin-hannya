@@ -27,6 +27,24 @@ export const STROKE = new Color('#f2f0ec')
 /** 紙面の地の文字。フォーカスされていない字はここまで落とす */
 export const INK_RESTING = INK.clone().multiplyScalar(0.55)
 
+/**
+ * フォーカスの明滅にかける時間（秒）。光るのも、まわりが沈むのも同じ長さで動かす。
+ * 瞬時に切り替えると紙面が点滅して見えるので、じわりと滲ませる。
+ * 潜る／戻るの遷移（Transition.tsx）とは別系統で、hover にだけ効く。
+ */
+export const FOCUS_FADE = 0.4
+
+/**
+ * `current` を `target` へ一定速度で寄せる。`FOCUS_FADE` 秒で 0↔1 を渡り切る。
+ * 指数補間だと最後がいつまでも詰まらず「0.4 秒で切り替わる」感覚にならないので線形にする。
+ */
+export function approach(current: number, target: number, delta: number, duration = FOCUS_FADE): number {
+  const step = delta / duration
+  const diff = target - current
+  if (Math.abs(diff) <= step) return target
+  return current + Math.sign(diff) * step
+}
+
 /* ---- 墨の質感 -------------------------------------------------------------
  * グリフの塗りを均一な白ではなく、濃淡とかすれのある墨に見せる。
  * テクスチャは持たず全て手続き的（README「ランタイムで SVG を触らない」に抵触しない）。
