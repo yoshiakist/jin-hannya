@@ -6,12 +6,12 @@
  * 2 つのティアで同じシーングラフ・同じ TSL ノードグラフが走る。
  */
 
-import { Suspense, useEffect, useRef, useState } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { useAtomValue, useSetAtom } from 'jotai'
 import * as THREE from 'three/webgpu'
 import { Paper } from './Paper.tsx'
-import { NodeStage } from './NodeStage.tsx'
+import { NodeStage, nodePanX } from './NodeStage.tsx'
 import { Transition, StageFade, TRANSITION_MS, ease } from './Transition.tsx'
 import { loadGlyphs } from './glyphs.ts'
 import { cappedDpr, measureFrameBudget } from './tier.ts'
@@ -26,7 +26,7 @@ import {
   INITIAL_PAN_X,
 } from '../world/pan.ts'
 import { navAtom, particleScaleAtom, tierAtom } from '../nav/atoms.ts'
-import { root } from '../content/loader.ts'
+import { nodeById, root } from '../content/loader.ts'
 
 /** 視野高を VIEW_HEIGHT / 拡大率 に保ち、パンと拡大をカメラへ反映する */
 function CameraRig() {
@@ -36,6 +36,7 @@ function CameraRig() {
   const panX = useAtomValue(panXAtom)
   const panY = useAtomValue(panYAtom)
   const zoom = useAtomValue(zoomAtom)
+  const halfWidth = useAtomValue(viewHalfWidthAtom)
   const setPan = useSetAtom(panXAtom)
   const setZoom = useSetAtom(zoomAtom)
   const setHalfWidth = useSetAtom(viewHalfWidthAtom)
@@ -51,6 +52,14 @@ function CameraRig() {
   const destinationId = nav.pendingId ?? nav.nodeId
   const toRoot = destinationId === root.id
   const transitioning = nav.phase === 'zooming-in' || nav.phase === 'zooming-out'
+
+  // L1 以降のカメラ x。大書が画面の右へはみ出す幅の画面では、はみ出すぶんだけ右へ送る。
+  // 大書の大きさは label の列組みで決まるので、行き先のノードから引く
+  const nodeX = useMemo(() => {
+    if (toRoot) return 0
+    const destination = nodeById(destinationId) ?? root
+    return nodePanX(destination.label, halfWidth)
+  }, [toRoot, destinationId, halfWidth])
 
   useEffect(() => {
     // 可動域は画面のアスペクト比で変わる。リサイズのたびに引き直す
@@ -88,9 +97,9 @@ function CameraRig() {
   }, [transitioning, nav.pendingId, camera])
 
   useFrame((_, delta) => {
-    // L0 ではパンと拡大に追従し、潜ったら中央・等倍へ戻る。
-    // 遷移中は行き先の側の値を見る（根へ戻るなら送っていた位置、潜るなら中央）
-    target.current.x = toRoot ? panX : 0
+    // L0 ではパンと拡大に追従し、潜ったら等倍で行き先の構図へ戻る。
+    // 遷移中は行き先の側の値を見る（根へ戻るなら送っていた位置、潜るなら大書が収まる位置）
+    target.current.x = toRoot ? panX : nodeX
     target.current.y = toRoot ? panY : 0
     target.current.zoom = toRoot ? zoom : 1
     // 縦 16 升ぶんが等倍でちょうど画面高に収まる。はみ出すのは横方向のみ

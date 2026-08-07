@@ -29,6 +29,7 @@ import {
 import { carriedNodeId } from './carry.ts'
 import { swayAt, swayPhase } from './sway.ts'
 import { VIEW_HEIGHT } from '../world/paper.ts'
+import { unitsPerPixel } from '../world/pan.ts'
 import { navAtom, currentNodeAtom, childNodesAtom, acceptsInputAtom } from '../nav/atoms.ts'
 import { labelText, type GraphNode } from '../content/schema.ts'
 
@@ -41,6 +42,15 @@ const HEADLINE_SINGLE_COLUMN_MAX = 7
 const HEADLINE_X = VIEW_HEIGHT * 0.60
 /** 大書の行間（列の送り）。1 字の大きさに対する倍率 */
 const HEADLINE_COLUMN_PITCH = 1.38
+
+/**
+ * 大書の右端と画面の右端のあいだに残す余白（px）。
+ * ワールド単位ではなく px で持つ：字の大きさは画面高から決まるので、
+ * 横に狭い画面ほど大書は相対的に大きくなり、比で持つと余白が足りなくなる。
+ */
+const HEADLINE_MARGIN_PX = 150
+/** ただし余白が画面幅を食い潰さないよう、幅に対する上限を置く（狭いスマホ向け） */
+const HEADLINE_MARGIN_MAX_RATIO = 0.2
 
 export interface HeadlineLayout {
   /** 読む順（右の列の上から、左の列の下へ）に並べた字 */
@@ -90,6 +100,24 @@ export function headlineLayout(label: string): HeadlineLayout {
   })
   return { chars, positions, size }
 }
+
+/**
+ * L1 以降のカメラ x（＝パン）。
+ *
+ * 大書はワールドの右側に固定してあるので、画面が横に狭いとそのままでは右へはみ出す。
+ * はみ出すぶんだけカメラを右へ送り、大書の右端に必ず `HEADLINE_MARGIN_PX` 相当の余白を残す。
+ * 大書だけを左へ寄せるのではなく**視野ごと**送るので、大書と図の間隔（右から左への情報の流れ）は変わらない。
+ * 収まる画面では 0 を返し、設計どおり図が画面中央に来る。
+ */
+export function nodePanX(label: string, halfWidth: number): number {
+  if (halfWidth <= 0) return 0
+  const { size } = headlineLayout(label)
+  const margin = Math.min(HEADLINE_MARGIN_PX * unitsPerPixel(1), halfWidth * 2 * HEADLINE_MARGIN_MAX_RATIO)
+  // 大書の右端。いちばん右の列の中心から字面の半分ぶん外側
+  const right = HEADLINE_X + size / 2
+  return Math.max(0, right + margin - halfWidth)
+}
+
 /** 子の図の中心 x。左の解説と右の大書に挟まれた帯の中央に置く */
 export const DIAGRAM_X = 0
 
