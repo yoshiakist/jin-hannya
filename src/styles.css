@@ -1,0 +1,341 @@
+/*
+ * デザイントークンと DOM レイヤーの組版。
+ * 値の出所は README「デザイントークン」。GPU 側の写しは src/scene/materials.ts にある。
+ */
+
+:root {
+  /* 面 */
+  --bg: #050505; /* ほぼ黒。完全な #000 ではなく僅かに浮かせる */
+  --vignette: radial-gradient(ellipse at 50% 50%, #0a0a0a 0%, #000 85%);
+
+  /* 文字 */
+  --ink: #f2f0ec; /* 大書・筆文字。わずかに温かい白 */
+  --text: #d8d5cf; /* 解説本文 */
+  --text-dim: #8e8a84; /* 読みガナ・梵語・補助 */
+  --rule: #b98a4a; /* img_01 の区切り罫。淡いオレンジ */
+
+  /* 状態 */
+  --focus: #ffd08a; /* hover / 選択の琥珀 */
+  --focus-glow: #ffb85c; /* グローの芯 */
+
+  /* 図形 */
+  --stroke: rgb(242 240 236 / 0.55);
+  --stroke-hover: var(--focus);
+
+  /* 組版 */
+  --serif: 'Hiragino Mincho ProN', 'Yu Mincho', 'Noto Serif JP', serif;
+  --sans: 'Hiragino Sans', 'Yu Gothic', 'Noto Sans JP', sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--serif);
+  overscroll-behavior: none;
+}
+
+body {
+  /* ドラッグでのパンを、ブラウザのスクロール・拡大と競合させない */
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+#root,
+.app {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+}
+
+.app {
+  background: var(--bg);
+  background-image: var(--vignette);
+  cursor: default;
+}
+
+/* 遷移中は入力を受けない（FSM の zooming-in / zooming-out 相） */
+.app.phase-zooming-in,
+.app.phase-zooming-out {
+  pointer-events: none;
+}
+
+.stage {
+  position: absolute;
+  inset: 0;
+}
+
+/* --- オーバーレイ ---------------------------------------------------------- */
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.overlay > * {
+  pointer-events: auto;
+}
+
+.overlay__top {
+  position: absolute;
+  top: clamp(12px, 3vh, 28px);
+  right: clamp(12px, 3vw, 32px);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* 読み（かな）／梵語。大書のすぐ左脇に、極小・字間広めの縦組みで置く */
+.overlay__reading {
+  position: absolute;
+  top: 12vh;
+  right: clamp(120px, 18vw, 260px);
+  writing-mode: vertical-rl;
+  font-size: clamp(9px, 1.05vh, 12px);
+  letter-spacing: 0.5em;
+  color: var(--text-dim);
+  line-height: 2.2;
+  max-height: 76vh;
+}
+
+.overlay__reading p {
+  margin: 0 0 0 1.2em;
+}
+
+.sanskrit__latin {
+  /* ラテン翻字は縦中横にせず縦に流す */
+  display: block;
+  margin-top: 1.5em;
+  opacity: 0.75;
+}
+
+/* 短い定義（サマリー）。縦書き 2〜4 列 */
+.overlay__summary {
+  position: absolute;
+  top: 14vh;
+  right: clamp(210px, 26vw, 380px);
+  writing-mode: vertical-rl;
+  max-height: 62vh;
+  font-size: clamp(12px, 1.5vh, 15px);
+  line-height: 2.1;
+  letter-spacing: 0.12em;
+  color: var(--text);
+  /* 定義の下端に淡いオレンジの細い縦罫を入れて区切りとする（img_01） */
+  padding-block-end: 1.2em;
+}
+
+.overlay__summary::after {
+  content: '';
+  position: absolute;
+  inset-block-end: 0;
+  inset-inline-start: 0;
+  inline-size: 100%;
+  block-size: 1px;
+  background: var(--rule);
+  opacity: 0.5;
+}
+
+.overlay__summary p {
+  margin: 0;
+}
+
+/* 長文解説。縦書き多列、列は右から左へ進む */
+.overlay__doc {
+  position: absolute;
+  top: 10vh;
+  left: clamp(48px, 6vw, 96px);
+  width: clamp(240px, 26vw, 420px);
+  height: 78vh;
+  writing-mode: vertical-rl;
+  column-gap: 2.4em;
+  font-size: clamp(12px, 1.45vh, 15px);
+  line-height: 2.15;
+  letter-spacing: 0.08em;
+  color: var(--text);
+  overflow: hidden;
+}
+
+.overlay__doc p {
+  margin: 0 0 1.6em;
+  text-indent: 1em;
+}
+
+/* --- 現在位置インジケータ --------------------------------------------------- */
+
+.breadcrumb {
+  position: absolute;
+  top: 12vh;
+  left: clamp(14px, 2.2vw, 30px);
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  /* 筆文字ではなく通常書体。大書との役割を明確に分ける */
+  font-family: var(--sans);
+  font-size: clamp(10px, 1.2vh, 12px);
+}
+
+.breadcrumb__rule {
+  width: 1px;
+  min-height: 26vh;
+  background: linear-gradient(to bottom, rgb(242 240 236 / 0.55), rgb(242 240 236 / 0.08));
+}
+
+.breadcrumb ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 1.4em;
+}
+
+.breadcrumb button {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--text-dim);
+  font: inherit;
+  writing-mode: vertical-rl;
+  letter-spacing: 0.3em;
+  cursor: pointer;
+  transition: color 0.35s ease;
+}
+
+.breadcrumb button:hover:not(:disabled) {
+  color: var(--focus);
+}
+
+.breadcrumb button.is-current {
+  color: var(--ink);
+  cursor: default;
+}
+
+/* --- ボタン ---------------------------------------------------------------- */
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 14px;
+  border: 1px solid var(--stroke);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  cursor: pointer;
+  transition:
+    border-color 0.3s ease,
+    color 0.3s ease;
+}
+
+.pill:hover,
+.pill[aria-pressed='true'] {
+  border-color: var(--focus);
+  color: var(--focus);
+}
+
+.pill--icon {
+  padding: 6px 10px;
+}
+
+.audio-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.audio-controls input[type='range'] {
+  width: 72px;
+  accent-color: var(--focus);
+}
+
+/* --- 左矢印 ---------------------------------------------------------------- */
+
+.left-arrow {
+  position: absolute;
+  left: clamp(20px, 4vw, 56px);
+  bottom: clamp(20px, 5vh, 56px);
+  color: var(--ink);
+  opacity: 0.25;
+  pointer-events: none;
+}
+
+.left-arrow.is-blinking {
+  animation: arrow-breathe 3.4s ease-in-out infinite;
+}
+
+@keyframes arrow-breathe {
+  0%,
+  100% {
+    opacity: 0.18;
+  }
+  50% {
+    opacity: 0.62;
+  }
+}
+
+/* --- Tier 3 の紙面 ---------------------------------------------------------- */
+
+.paper-fallback {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: row-reverse;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 0.34em;
+  padding-inline: 6vw;
+  font-size: clamp(15px, 3.4vh, 24px);
+  /* 紙面は画面より広い。左へはみ出したぶんはパン量で送る */
+  transform: translate3d(var(--pan-px, 0px), 0, 0);
+  transition: transform 0.05s linear;
+}
+
+.paper-fallback__column {
+  display: flex;
+  flex-direction: column;
+  gap: 0.22em;
+  flex: 0 0 auto;
+}
+
+.paper-fallback__char {
+  color: var(--ink);
+  line-height: 1;
+  transition:
+    color 0.45s ease,
+    opacity 0.45s ease,
+    text-shadow 0.45s ease;
+}
+
+.paper-fallback__char.is-dimmed {
+  opacity: 0.38;
+}
+
+.paper-fallback__char.is-focused {
+  color: var(--focus);
+  /* グローは 2 段（近距離の強い滲み + 遠距離の弱い滲み） */
+  text-shadow:
+    0 0 6px var(--focus-glow),
+    0 0 22px rgb(255 184 92 / 0.35);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .left-arrow.is-blinking {
+    animation: none;
+    opacity: 0.4;
+  }
+  .paper-fallback {
+    transition: none;
+  }
+}
