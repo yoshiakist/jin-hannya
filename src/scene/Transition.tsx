@@ -15,7 +15,7 @@ import { headlineLayout, headlinePosition } from './NodeStage.tsx'
 import { navAtom, tierAtom } from '../nav/atoms.ts'
 import { nodeById, root, childrenOf } from '../content/loader.ts'
 import { SUTRA_CHARS } from '../content/sutra.ts'
-import { gridPosition, CELL_Y, VIEW_HEIGHT } from '../world/paper.ts'
+import { gridPosition, GLYPH_SIZE, VIEW_HEIGHT } from '../world/paper.ts'
 import type { GraphNode } from '../content/schema.ts'
 
 /** 遷移演出の尺（ミリ秒）。ふんわりと滑らかに接続する */
@@ -30,7 +30,7 @@ function visibleGlyphs(node: GraphNode): ParticleSource[] {
   if (node.kind === 'sutra') {
     return SUTRA_CHARS.map((char, index) => {
       const [x, y] = gridPosition(index)
-      return { char, position: [x, y] as [number, number], size: CELL_Y * 0.78 }
+      return { char, position: [x, y] as [number, number], size: GLYPH_SIZE }
     })
   }
 

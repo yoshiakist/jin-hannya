@@ -8,12 +8,18 @@
 import { COLS_PER_LINE, GRID_COLUMNS, cellOf } from '../content/sutra.ts'
 
 /** 字送り（列内・縦方向）。1.0 だと升が詰まりすぎるので少し空ける */
-export const CELL_Y = 1.22
+export const CELL_Y = 1.1
 /** 行送り（列間・横方向） */
-export const CELL_X = 1.34
+export const CELL_X = 1.61
+
+/** 字そのものの大きさ。グリフは 1x1 に正規化されているので升とは独立に持つ */
+export const GLYPH_SIZE = 0.95
+
+/** 上下の余白（合計）。字送りに引きずられないよう絶対値で持つ */
+export const MARGIN_Y = 2.93
 
 /** 縦 16 升 + 上下の余白。カメラの視野高はこの値に固定する */
-export const VIEW_HEIGHT = COLS_PER_LINE * CELL_Y + CELL_Y * 1.2
+export const VIEW_HEIGHT = COLS_PER_LINE * CELL_Y + MARGIN_Y
 
 /** 紙面の幅（ワールド単位） */
 export const PAPER_WIDTH = (GRID_COLUMNS - 1) * CELL_X
