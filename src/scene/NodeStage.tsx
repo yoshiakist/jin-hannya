@@ -9,12 +9,12 @@
  * 画面右端が現在ノードの大書、中央が子の図。情報は右から左へ流れる。
  */
 
-import { useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { useAtomValue, useSetAtom } from 'jotai'
 import { BufferGeometry, Color, Group, Line, LineBasicMaterial, Vector3 } from 'three'
 import { glyphGeometry, glyphParticles, CIRCLE_KEY } from './glyphs.ts'
-import { INK, FOCUS, STROKE } from './materials.ts'
+import { INK, FOCUS, STROKE, createInkMaterial } from './materials.ts'
 import { VIEW_HEIGHT } from '../world/paper.ts'
 import { navAtom, currentNodeAtom, childNodesAtom, acceptsInputAtom } from '../nav/atoms.ts'
 import type { GraphNode } from '../content/schema.ts'
@@ -257,6 +257,15 @@ export function Glyph({
   const geometry = useMemo(() => glyphGeometry(char), [char])
   const groupRef = useRef<Group>(null)
 
+  // 墨のムラ。色と不透明度はユニフォーム越しに毎レンダー流し込む（hover でシェーダを作り直さない）
+  const ink = useMemo(() => createInkMaterial(), [])
+  useEffect(() => () => ink.material.dispose(), [ink])
+  ink.color.value.copy(color)
+  ink.opacity.value = opacity
+  ink.scale.value = size
+  // 種は字ごとに固定。同じ字は常に同じムラになるので、遷移で拡大しても模様が飛ばない
+  ink.seed.value = ((char.codePointAt(0) ?? 0) % 251) / 251 * 8
+
   // 大書もわずかにゆらぐ。紙面と同じ運動則にすることで、潜っても同じ場だと分かる
   const phase = useMemo(() => (char.charCodeAt(0) % 97) / 97 * Math.PI * 2, [char])
   useFrame(({ clock }) => {
@@ -274,9 +283,7 @@ export function Glyph({
 
   return (
     <group ref={groupRef} position={position}>
-      <mesh geometry={geometry} scale={size}>
-        <meshBasicMaterial color={color} transparent opacity={opacity} toneMapped={false} />
-      </mesh>
+      <mesh geometry={geometry} material={ink.material} scale={size} />
       {/* グローの近距離側。遠距離側は DOM 側の bloom 相当で補う */}
       {glow && (
         <mesh geometry={geometry} scale={size * 1.06} position={[0, 0, -0.01]}>

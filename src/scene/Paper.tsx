@@ -14,7 +14,7 @@ import { MeshBasicNodeMaterial } from 'three/webgpu'
 import { attribute, mix, uniform, vec3 } from 'three/tsl'
 import { SUTRA_CHARS, COLS_PER_LINE, GRID_COLUMNS, indexAt } from '../content/sutra.ts'
 import { glyphGeometry } from './glyphs.ts'
-import { INK, INK_RESTING, FOCUS } from './materials.ts'
+import { INK, INK_RESTING, FOCUS, inkDensity, inkShade, inkAlpha } from './materials.ts'
 import { CELL_X, CELL_Y, gridPosition } from '../world/paper.ts'
 import { navAtom, acceptsInputAtom } from '../nav/atoms.ts'
 import { root, childrenOf } from '../content/loader.ts'
@@ -128,13 +128,24 @@ function CharInstances({ group, indexToNode }: { group: CharGroup; indexToNode: 
     [group.indices.length],
   )
 
+  /** 墨のムラの種。同じ字が紙面に何度出ても違うムラになるよう、全文インデックスから引く */
+  const seed = useMemo(() => {
+    const array = new Float32Array(group.indices.length)
+    group.indices.forEach((index, i) => {
+      const r = Math.sin(index * 78.233) * 43758.5453
+      array[i] = (r - Math.floor(r)) * 8
+    })
+    return new InstancedBufferAttribute(array, 1)
+  }, [group.indices])
+
   const geometry = useMemo(() => {
     const base = glyphGeometry(group.char)
     if (!base) return null
     // glyphGeometry は字ごとに 1 つを返し、CharInstances も字ごとに 1 つ。属性を足して衝突しない
     base.setAttribute('aFocus', focus)
+    base.setAttribute('aSeed', seed)
     return base
-  }, [group.char, focus])
+  }, [group.char, focus, seed])
 
   /** hover 中に、フォーカス外の字をどこまで沈めるか（0 = 沈めない） */
   const dim = useMemo(() => uniform(0), [])
@@ -143,9 +154,12 @@ function CharInstances({ group, indexToNode }: { group: CharGroup; indexToNode: 
     const nodeMaterial = new MeshBasicNodeMaterial({ transparent: true, toneMapped: false })
     const focused = attribute<'float'>('aFocus', 'float')
     const resting = mix(vec3(INK.r, INK.g, INK.b), vec3(INK_RESTING.r, INK_RESTING.g, INK_RESTING.b), dim)
-    nodeMaterial.colorNode = mix(resting, vec3(FOCUS.r, FOCUS.g, FOCUS.b), focused)
+    const base = mix(resting, vec3(FOCUS.r, FOCUS.g, FOCUS.b), focused)
+    // 墨のムラ。光っている字ではムラを浅くして、発光の芯が抜けないようにする
+    const density = mix(inkDensity(attribute<'float'>('aSeed', 'float')), 1, focused.mul(0.7))
+    nodeMaterial.colorNode = base.mul(inkShade(density))
     // 光る字だけ不透明度も上げ、グローの芯にする
-    nodeMaterial.opacityNode = mix(mix(0.94, 0.55, dim), 1, focused)
+    nodeMaterial.opacityNode = mix(mix(0.94, 0.55, dim), 1, focused).mul(inkAlpha(density))
     return nodeMaterial
   }, [dim])
 
