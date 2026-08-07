@@ -16,7 +16,7 @@ import { Transition } from './Transition.tsx'
 import { loadGlyphs } from './glyphs.ts'
 import { cappedDpr, measureFrameBudget } from './tier.ts'
 import { VIEW_HEIGHT } from '../world/paper.ts'
-import { panXAtom, panBoundsAtom, panBoundsFor } from '../world/pan.ts'
+import { panXAtom, panBoundsAtom, panBoundsFor, halfWidthFor, INITIAL_PAN_X } from '../world/pan.ts'
 import { navAtom, isRootAtom, particleScaleAtom, tierAtom } from '../nav/atoms.ts'
 import { root } from '../content/loader.ts'
 
@@ -28,8 +28,10 @@ function CameraRig() {
   const setPan = useSetAtom(panXAtom)
   const setBounds = useSetAtom(panBoundsAtom)
   const isRoot = useAtomValue(isRootAtom)
-  const target = useRef(0)
+  const target = useRef(INITIAL_PAN_X)
   const initialised = useRef(false)
+  /** 最初のフレームで読み始めの位置へ飛ばしたか */
+  const snapped = useRef(false)
 
   useEffect(() => {
     // 縦 16 升ぶんが必ず画面高に収まる。はみ出すのは横方向のみ
@@ -37,22 +39,29 @@ function CameraRig() {
     camera.updateProjectionMatrix()
 
     // 可動域は画面のアスペクト比で変わる。リサイズのたびに引き直す
-    const bounds = panBoundsFor((size.width / size.height) * VIEW_HEIGHT * 0.5)
+    const bounds = panBoundsFor(halfWidthFor(size.width, size.height))
     setBounds(bounds)
+    // 読み始めは紙面の右上、すなわち第 1 列の先頭。
+    // atom の初期値は窓の寸法から出してあるので、ここは Canvas の実測との差を詰めるだけ。
+    // 補間を挟むと起動直後に紙面が横へ流れて見えるので、初回はカメラごと飛ばす
+    setPan((x) => (initialised.current ? x : bounds.max))
     if (!initialised.current) {
       initialised.current = true
-      // 読み始めは紙面の右上、すなわち第 1 列の先頭
-      setPan(bounds.max)
+      target.current = bounds.max
       camera.position.x = bounds.max
-    } else {
-      // クランプし直す。リサイズで枠外へ出たままにしない
-      setPan((x) => x)
     }
   }, [camera, size.width, size.height, setBounds, setPan])
 
   useFrame((_, delta) => {
     // L0 ではパンに追従し、潜ったら中央へ戻る
     target.current = isRoot ? panX : 0
+    // 最初の 1 フレームだけは補間せず読み始めの位置へ置く。
+    // 補間すると起動直後に紙面が中央から右へ流れて見える
+    if (!snapped.current) {
+      snapped.current = true
+      camera.position.x = target.current
+      return
+    }
     // spring 相当の指数補間。フレームレートに依らないよう delta で減衰させる
     const k = 1 - Math.exp(-delta * 9)
     camera.position.x += (target.current - camera.position.x) * k
@@ -94,7 +103,15 @@ export function Stage() {
     <Canvas
       className="stage"
       orthographic
-      camera={{ position: [0, 0, 10], near: 0.1, far: 100, zoom: 40 }}
+      // position の x は 0 のまま置く。r3f は原点を向く姿勢を初期に与えるので、
+      // ここに読み始めの x を書くとカメラが斜めを向き、紙面が横に潰れる。
+      // 読み始めの位置は CameraRig が最初のフレームで入れる
+      camera={{
+        position: [0, 0, 10],
+        near: 0.1,
+        far: 100,
+        zoom: (globalThis.innerHeight || 0) / VIEW_HEIGHT || 40,
+      }}
       dpr={cappedDpr()}
       gl={async (props) => {
         const renderer = new THREE.WebGPURenderer(props as THREE.WebGPURendererParameters)

@@ -12,7 +12,7 @@
 
 import { atom, useAtomValue, useSetAtom } from 'jotai'
 import { useEffect, useRef } from 'react'
-import { CELL_X, PAPER_WIDTH } from './paper.ts'
+import { CELL_X, PAPER_WIDTH, VIEW_HEIGHT } from './paper.ts'
 
 export interface PanBounds {
   /** 最も左まで送った状態のカメラ x */
@@ -37,9 +37,31 @@ export function panBoundsFor(halfWidth: number): PanBounds {
   return min >= max ? { min: max, max } : { min, max }
 }
 
-export const panBoundsAtom = atom<PanBounds>({ min: 0, max: 0 })
+/** ビューポートの寸法（px）からカメラのビューポート半幅（ワールド単位）を出す */
+export function halfWidthFor(width: number, height: number): number {
+  return height > 0 ? (width / height) * VIEW_HEIGHT * 0.5 : 0
+}
 
-const panXRaw = atom(0)
+/**
+ * 起動時の可動域。実測は Canvas のマウント後に Stage が引き直すが、
+ * それを待つと最初の数フレームだけ紙面が中央に描かれ、右端寄せへ動いて見える。
+ * 最初の 1 フレームから読み始めの位置で描くために窓の寸法から先に出しておく。
+ */
+function initialBounds(): PanBounds {
+  const width = globalThis.innerWidth || 0
+  const height = globalThis.innerHeight || 0
+  if (!width || !height) return { min: 0, max: 0 }
+  return panBoundsFor(halfWidthFor(width, height))
+}
+
+const startBounds = initialBounds()
+
+export const panBoundsAtom = atom<PanBounds>(startBounds)
+
+/** 読み始めは紙面の右上、すなわち第 1 列の先頭。カメラの初期位置もこれに合わせる */
+export const INITIAL_PAN_X = startBounds.max
+
+const panXRaw = atom(INITIAL_PAN_X)
 
 /** ワールド単位でのカメラ x。書き込みは常に可動域へクランプされる */
 export const panXAtom = atom(
