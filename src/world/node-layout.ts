@@ -18,7 +18,7 @@ const HEADLINE_SINGLE_COLUMN_MAX = 7
 /** 画面右端の大書の中心 x。ワールド単位 */
 const HEADLINE_X = VIEW_HEIGHT * 0.60
 /** 大書の行間（列の送り）。1 字の大きさに対する倍率 */
-const HEADLINE_COLUMN_PITCH = 1.38
+const HEADLINE_COLUMN_PITCH = 1.22
 
 /**
  * 大書の右端と画面の右端のあいだに残す余白（px）。

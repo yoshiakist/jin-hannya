@@ -87,9 +87,9 @@ body {
   --summary-width: 0px;
 
   /* 大書との間合い。読み・サマリー・本文の x はこの 3 つだけで動かせる */
-  --reading-gap: clamp(10px, 1.1vw, 20px);
-  --summary-gap: clamp(14px, 1.8vw, 34px);
-  --doc-gap: clamp(18px, 2.2vw, 44px);
+  --reading-gap: clamp(30px, 2.5vw, 50px);
+  --summary-gap: clamp(26px, 3.4vw, 64px);
+  --doc-gap: clamp(28px, 3.6vw, 68px);
   /* 本文の左に残す余白。現在位置インジケータと重ねない */
   --doc-edge: clamp(48px, 6vw, 96px);
 
@@ -97,7 +97,7 @@ body {
      図を持つノードでは図の左端も越えさせる（円相や縦連結に本文を重ねない） */
   --summary-right: calc(var(--headline-left) + var(--summary-gap));
   --doc-right: max(
-    calc(var(--summary-right) + var(--summary-width) + var(--doc-gap)),
+    calc(var(--summary-right) + var(--summary-width) + var(--doc-gap) + 150px),
     calc(var(--diagram-left) + var(--doc-gap))
   );
 }
@@ -125,7 +125,7 @@ body {
   transform: translateX(100%);
   max-width: max(0px, calc(var(--headline-right) - var(--reading-gap)));
   writing-mode: vertical-rl;
-  font-size: clamp(9px, 1.05vh, 12px);
+  font-size: clamp(15px, 1.6vh, 19px);
   letter-spacing: 0.5em;
   color: var(--text-dim);
   line-height: 2.2;
@@ -134,7 +134,7 @@ body {
 }
 
 .overlay__reading p {
-  margin: 0 0 0 1.2em;
+  margin: 4em 0 0 0.5em;
 }
 
 .sanskrit__latin {
@@ -147,11 +147,12 @@ body {
 /* 短い定義（サマリー）。縦書き 2〜4 列。大書の左端から左へ流す */
 .overlay__summary {
   position: absolute;
-  top: 14vh;
+  /* 天は大きく空け、下寄りに組む */
+  top: 30vh;
   right: var(--summary-right);
   writing-mode: vertical-rl;
-  max-height: 62vh;
-  font-size: clamp(12px, 1.5vh, 15px);
+  max-height: 58vh;
+  font-size: clamp(18px, 2.25vh, 23px);
   line-height: 2.1;
   letter-spacing: 0.12em;
   color: var(--text);
@@ -185,7 +186,7 @@ body {
   height: 78vh;
   writing-mode: vertical-rl;
   column-gap: 2.4em;
-  font-size: clamp(12px, 1.45vh, 15px);
+  font-size: clamp(16px, 1.65vh, 19px);
   line-height: 2.15;
   letter-spacing: 0.08em;
   color: var(--text);
