@@ -16,6 +16,7 @@ import {
   isRootAtom,
   acceptsInputAtom,
 } from '../nav/atoms.ts'
+import { labelText } from '../content/schema.ts'
 import { SpeakButton } from './SpeakButton.tsx'
 import { AudioControls } from './AudioControls.tsx'
 import { LeftArrow } from './LeftArrow.tsx'
@@ -114,6 +115,8 @@ function Breadcrumb() {
       <ol>
         {ancestry.map((node, depth) => {
           const current = depth === ancestry.length - 1
+          // 列の切れ目は大書だけのもの。ここは 1 行の見出しとして詰めて出す
+          const text = labelText(node.label)
           return (
             <li key={node.id}>
               <button
@@ -123,7 +126,7 @@ function Breadcrumb() {
                 disabled={current || !accepts}
                 onClick={() => dispatch({ type: 'back', id: node.id })}
               >
-                {node.label.length > 6 ? `${node.label.slice(0, 5)}…` : node.label}
+                {text.length > 6 ? `${text.slice(0, 5)}…` : text}
               </button>
             </li>
           )

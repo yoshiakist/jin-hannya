@@ -20,7 +20,6 @@ import { setCarriedNodeId } from './carry.ts'
 import { glyphGeometry } from './glyphs.ts'
 import {
   headlineLayout,
-  headlinePosition,
   diagramItems,
   childCharOffset,
   DIAGRAM_X,
@@ -29,7 +28,7 @@ import { navAtom, tierAtom } from '../nav/atoms.ts'
 import { nodeById, root, childrenOf, SUTRA_INDEX_TO_NODE } from '../content/loader.ts'
 import { SUTRA_CHARS } from '../content/sutra.ts'
 import { gridPosition, GLYPH_SIZE } from '../world/paper.ts'
-import type { GraphNode } from '../content/schema.ts'
+import { labelText, type GraphNode } from '../content/schema.ts'
 
 /** 遷移演出の尺（ミリ秒）。ふんわりと滑らかに接続する */
 export const TRANSITION_MS = 900
@@ -61,14 +60,14 @@ function visibleGlyphs(node: GraphNode): StageGlyph[] {
     })
   }
 
-  const { chars, perColumn, size } = headlineLayout(node.label)
+  const { chars, positions, size } = headlineLayout(node.label)
   const headline: StageGlyph[] = chars.map((char, i) => {
-    const [x, y] = headlinePosition(i, perColumn, chars.length, size)
+    const [x, y] = positions[i]!
     return { char, position: [x, y] as [number, number], size, owner: node.id }
   })
 
   const kids = diagramItems(node, childrenOf(node)).flatMap((item) => {
-    const label = Array.from(item.node.label)
+    const label = Array.from(labelText(item.node.label))
     return label.map((char, k) => {
       const [dx, dy] = childCharOffset(k, label.length, item.size, item.frame)
       return {

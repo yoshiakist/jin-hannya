@@ -51,6 +51,7 @@ assets/     svg/(筆文字118) pattern/circle.svg bgm/ sfx/ voice/(未収録)
 - 遷移は相を持つ FSM（`idle → hovered → zooming-in → focused → zooming-out`）。`zooming-*` の間は入力を殺す。
 - 演出は**潜ると戻るで非対称**。潜る = 非フォーカス字が散開・生存字はメッシュのまま連続移動／戻る = 現在字が再配置されつつ粒子がフェードインして凝集。逆再生にはしない。
 - `layout`（`none` / `circle` / `column`）は**ノード側の YAML が持つ**。描画側で決めない。
+- `label` の空白・改行は**大書の列の切れ目**（`headlineLayout`）。字だけが要る場所は `labelText()` を通す（`range` の突き合わせ・グリフ在庫・図の中の子・現在位置インジケータ）。
 - 円相は `assets/pattern/circle.svg` を使う。手続き的生成はしない。断片パス約 40 本も間引かない。
 - 色は `src/scene/materials.ts` と `src/styles.css` のトークンから引く。琥珀（`--focus`）以外の有彩色を足さない。
 

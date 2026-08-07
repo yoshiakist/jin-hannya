@@ -6,7 +6,7 @@
  * 参照整合性など横断的な検査は scripts/validate-graph.ts が CI で行う。
  */
 
-import { GraphNode, DocFrontmatter } from './schema.ts'
+import { GraphNode, DocFrontmatter, labelText } from './schema.ts'
 import { SUTRA_CHARS, SUTRA_LENGTH, sliceOfRange } from './sutra.ts'
 
 const yamlModules = import.meta.glob<{ default: unknown }>('#content/graph/*.yaml', {
@@ -138,7 +138,7 @@ export function ancestryOf(node: GraphNode): GraphNode[] {
 if (import.meta.env.DEV) {
   for (const node of nodes.values()) {
     // 根の range は全文を指し、label は大書用の題名なので突き合わせない
-    if (node.kind !== 'sutra' && node.range && sliceOfRange(node.range) !== node.label) {
+    if (node.kind !== 'sutra' && node.range && sliceOfRange(node.range) !== labelText(node.label)) {
       console.warn(
         `[content] ${node.id}: range ${JSON.stringify(node.range)} が label "${node.label}" と一致しない ` +
           `(実際: "${sliceOfRange(node.range)}")`,

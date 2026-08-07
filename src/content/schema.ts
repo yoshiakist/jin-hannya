@@ -43,7 +43,10 @@ const Slug = z.string().regex(/^[a-z][a-z0-9-]*$/, 'id はローマ字小文字�
 export const GraphNode = z.object({
   id: Slug,
   kind: NodeKind,
-  /** 大書に使う文字列。構成文字はすべて assets/svg/ に存在すること */
+  /**
+   * 大書に使う文字列。構成文字はすべて assets/svg/ に存在すること。
+   * 空白・改行は**列の切れ目**として読む（`headlineLayout`）。字そのものは `labelText()` で取り出す。
+   */
   label: z.string().min(1),
   reading: z.string().min(1),
   sanskrit: Sanskrit.optional(),
@@ -60,6 +63,14 @@ export const GraphNode = z.object({
   audio: z.string().optional(),
 })
 export type GraphNode = z.infer<typeof GraphNode>
+
+/**
+ * label から列の切れ目（空白・改行）を除いた字だけの並び。
+ * range との突き合わせ、図の中の子の組版、グリフ在庫の検査はこちらを見る。
+ */
+export function labelText(label: string): string {
+  return label.replace(/\s+/gu, '')
+}
 
 /** `content/docs/*.md` の frontmatter */
 export const DocFrontmatter = z.object({

@@ -29,7 +29,7 @@ import {
 import { carriedNodeId } from './carry.ts'
 import { VIEW_HEIGHT } from '../world/paper.ts'
 import { navAtom, currentNodeAtom, childNodesAtom, acceptsInputAtom } from '../nav/atoms.ts'
-import type { GraphNode } from '../content/schema.ts'
+import { labelText, type GraphNode } from '../content/schema.ts'
 
 /** 大書の 1 文字あたりの高さ。画面高の 60〜85% を大書が占める（モック分析より） */
 const HEADLINE_SIZE = VIEW_HEIGHT * 0.30
@@ -39,24 +39,54 @@ const HEADLINE_SINGLE_COLUMN_MAX = 7
 /** 画面右端の大書の中心 x。ワールド単位 */
 const HEADLINE_X = VIEW_HEIGHT * 0.60
 
-/**
- * 大書の組み方。句のように長い label でも必ず画面高に収まるよう、
- * 列数と 1 字の大きさを字数から決める。Transition もこの結果を使って粒子の出所を決めるので、
- * 配置の計算はここ 1 箇所に集約する。
- */
-export function headlineLayout(label: string): { chars: string[]; perColumn: number; size: number } {
-  const chars = Array.from(label)
-  const perColumn =
-    chars.length <= HEADLINE_SINGLE_COLUMN_MAX ? chars.length : Math.ceil(chars.length / 2)
-  return { chars, perColumn, size: Math.min(HEADLINE_SIZE, (VIEW_HEIGHT * 0.80) / perColumn) }
+export interface HeadlineLayout {
+  /** 読む順（右の列の上から、左の列の下へ）に並べた字 */
+  chars: string[]
+  /** `chars` と同じ順のワールド座標 */
+  positions: [number, number, number][]
+  /** 1 字の大きさ */
+  size: number
 }
 
-/** 大書 1 字のワールド座標 */
-export function headlinePosition(index: number, perColumn: number, total: number, size: number): [number, number, number] {
-  const column = Math.floor(index / perColumn)
-  const row = index % perColumn
-  const rows = Math.min(perColumn, total - column * perColumn)
-  return [HEADLINE_X - column * size * 1.15, ((rows - 1) / 2 - row) * size, 0]
+/**
+ * 大書の列の切り方。
+ * label の空白・改行を列の切れ目として読むので、どこで折るかはコンテンツ側が決められる。
+ * 区切りを持たない label だけ字数から自動で折り返す。
+ */
+function headlineColumns(label: string): string[][] {
+  const parts = label.split(/\s+/u).filter((part) => part.length > 0)
+  if (parts.length > 1) return parts.map((part) => Array.from(part))
+
+  const chars = Array.from(parts[0] ?? '')
+  if (chars.length <= HEADLINE_SINGLE_COLUMN_MAX) return [chars]
+  const perColumn = Math.ceil(chars.length / 2)
+  return [chars.slice(0, perColumn), chars.slice(perColumn)]
+}
+
+/**
+ * 大書の組み方。句のように長い label でも必ず画面高に収まるよう、
+ * 1 字の大きさは**いちばん長い列**から決める。Transition もこの結果を使って粒子の出所を決めるので、
+ * 配置の計算はここ 1 箇所に集約する。
+ */
+export function headlineLayout(label: string): HeadlineLayout {
+  const columns = headlineColumns(label)
+  const longest = Math.max(...columns.map((column) => column.length))
+  const size = Math.min(HEADLINE_SIZE, (VIEW_HEIGHT * 0.80) / longest)
+
+  const chars: string[] = []
+  const positions: [number, number, number][] = []
+  columns.forEach((column, index) => {
+    // 列ごとに縦の中央で揃える。長さの違う列が並んでも重心が動かない
+    for (const [row, char] of column.entries()) {
+      chars.push(char)
+      positions.push([
+        HEADLINE_X - index * size * 1.15,
+        ((column.length - 1) / 2 - row) * size,
+        0,
+      ])
+    }
+  })
+  return { chars, positions, size }
 }
 /** 子の図の中心 x。左の解説と右の大書に挟まれた帯の中央に置く */
 export const DIAGRAM_X = 0
@@ -143,7 +173,7 @@ export function NodeStage() {
 
 /** 現在ノードの大書。縦組みで、長い句は左へ折り返す */
 function Headline({ node }: { node: GraphNode }) {
-  const { chars, perColumn, size } = useMemo(() => headlineLayout(node.label), [node.label])
+  const { chars, positions, size } = useMemo(() => headlineLayout(node.label), [node.label])
 
   return (
     <group>
@@ -151,7 +181,7 @@ function Headline({ node }: { node: GraphNode }) {
         <Glyph
           key={`${char}-${i}`}
           char={char}
-          position={headlinePosition(i, perColumn, chars.length, size)}
+          position={positions[i]!}
           size={size}
           color={INK}
           // 潜って来た／これから戻る字。遷移では薄れず、図の位置とのあいだを動く
@@ -218,7 +248,7 @@ function ChildNode({ item }: { item: DiagramItem }) {
   const accepts = useAtomValue(acceptsInputAtom)
   const hoveredId = useAtomValue(navAtom).hoveredId
   const hovered = hoveredId === node.id
-  const chars = useMemo(() => Array.from(node.label), [node.label])
+  const chars = useMemo(() => Array.from(labelText(node.label)), [node.label])
 
   const width = size * (chars.length * 1.05 + 1.6)
   const height = size * 1.9
