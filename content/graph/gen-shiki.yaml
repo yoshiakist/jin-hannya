@@ -1,0 +1,10 @@
+id: gen-shiki
+kind: term
+label: 眼識
+reading: げんしき
+sanskrit:
+  text: cakṣur-vijñāna
+  kana: チャクシュル・ヴィジュニャーナ
+summary: 眼が色かたちを識別するはたらき。
+parent: shiki-vijnana
+layout: none

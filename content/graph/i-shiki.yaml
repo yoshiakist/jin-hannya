@@ -1,0 +1,10 @@
+id: i-shiki
+kind: term
+label: 意識
+reading: いしき
+sanskrit:
+  text: mano-vijñāna
+  kana: マノ・ヴィジュニャーナ
+summary: 意が法（考えの対象）を識別するはたらき。前五識をまとめ、思考を組み立てる。
+parent: shiki-vijnana
+layout: none

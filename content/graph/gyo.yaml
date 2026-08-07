@@ -1,0 +1,10 @@
+id: gyo
+kind: term
+label: 行
+reading: ぎょう
+sanskrit:
+  text: saṃskāra
+  kana: サンスカーラ
+summary: 形成力。意志と習慣。次の行いを方向づけ、積み重なっていくもの。
+parent: goun
+layout: none

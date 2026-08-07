@@ -1,0 +1,10 @@
+id: so
+kind: term
+label: 想
+reading: そう
+sanskrit:
+  text: saṃjñā
+  kana: サンジュニャー
+summary: 表象。受け取ったものに像を結び、名を当てるはたらき。
+parent: goun
+layout: none

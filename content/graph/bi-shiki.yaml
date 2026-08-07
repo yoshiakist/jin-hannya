@@ -1,0 +1,10 @@
+id: bi-shiki
+kind: term
+label: 鼻識
+reading: びしき
+sanskrit:
+  text: ghrāṇa-vijñāna
+  kana: グラーナ・ヴィジュニャーナ
+summary: 鼻が香を識別するはたらき。
+parent: shiki-vijnana
+layout: none

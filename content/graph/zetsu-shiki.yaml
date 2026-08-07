@@ -1,0 +1,10 @@
+id: zetsu-shiki
+kind: term
+label: 舌識
+reading: ぜつしき
+sanskrit:
+  text: jihvā-vijñāna
+  kana: ジフヴァー・ヴィジュニャーナ
+summary: 舌が味を識別するはたらき。
+parent: shiki-vijnana
+layout: none

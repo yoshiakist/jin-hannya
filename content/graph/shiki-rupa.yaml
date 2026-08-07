@@ -1,0 +1,10 @@
+id: shiki-rupa
+kind: term
+label: 色
+reading: しき
+sanskrit:
+  text: rūpa
+  kana: ルーパ
+summary: かたちを持つもの。肉体と物質。五蘊のうち唯一、物質の側に属する。
+parent: goun
+layout: none

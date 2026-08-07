@@ -1,0 +1,11 @@
+id: shiki-vijnana
+kind: term
+label: 識
+reading: しき
+sanskrit:
+  text: vijñāna
+  kana: ヴィジュニャーナ
+summary: 識別作用。対象を分けて知るはたらき。感官ごとに六つに分かれる。
+parent: goun
+children: [gen-shiki, ni-shiki, bi-shiki, zetsu-shiki, shin-shiki, i-shiki]
+layout: column

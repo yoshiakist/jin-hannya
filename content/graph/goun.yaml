@@ -1,0 +1,12 @@
+id: goun
+kind: term
+label: 五蘊
+reading: ごうん
+sanskrit:
+  text: pañca-skandha
+  kana: パンチャ・スカンダ
+summary: 人間という現象を成り立たせている五つの集まり。色・受・想・行・識。
+parent: shoken-goun-kaiku
+children: [shiki-rupa, ju, so, gyo, shiki-vijnana]
+layout: circle
+range: [26, 28]

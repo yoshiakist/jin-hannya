@@ -1,0 +1,11 @@
+id: shingyo
+kind: sutra
+label: 般若心経
+reading: はんにゃしんぎょう
+sanskrit:
+  text: Prajñāpāramitā-hṛdaya
+  kana: プラジュニャーパーラミター・フリダヤ
+summary: 空の智慧を説く、最も短い経典。全文二百七十六字。
+children: [kanjizai-gyojin]
+layout: none
+range: [0, 276]

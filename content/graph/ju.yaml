@@ -1,0 +1,10 @@
+id: ju
+kind: term
+label: 受
+reading: じゅ
+sanskrit:
+  text: vedanā
+  kana: ヴェーダナー
+summary: 感受。快・不快・どちらでもない、という最初の受け取り。
+parent: goun
+layout: none

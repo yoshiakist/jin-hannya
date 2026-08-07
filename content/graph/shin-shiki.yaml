@@ -1,0 +1,10 @@
+id: shin-shiki
+kind: term
+label: 身識
+reading: しんしき
+sanskrit:
+  text: kāya-vijñāna
+  kana: カーヤ・ヴィジュニャーナ
+summary: 身が触を識別するはたらき。
+parent: shiki-vijnana
+layout: none

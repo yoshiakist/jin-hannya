@@ -1,0 +1,10 @@
+id: ni-shiki
+kind: term
+label: 耳識
+reading: にしき
+sanskrit:
+  text: śrotra-vijñāna
+  kana: シュロートラ・ヴィジュニャーナ
+summary: 耳が音を識別するはたらき。
+parent: shiki-vijnana
+layout: none
