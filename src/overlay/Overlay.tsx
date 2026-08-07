@@ -19,7 +19,7 @@ import {
   acceptsInputAtom,
 } from '../nav/atoms.ts'
 import { overlayInsets, DOC_EDGE_PX } from '../world/node-layout.ts'
-import { nodePanXAtom, nodePanRangeAtom, unitsPerPixel } from '../world/pan.ts'
+import { nodePanXAtom, nodePanRangeAtom, resetNodePanAtom, unitsPerPixel } from '../world/pan.ts'
 import { VIEW_HEIGHT } from '../world/paper.ts'
 import { labelText, type GraphNode } from '../content/schema.ts'
 import { APPEAR_DELAY_MS } from '../scene/Transition.tsx'
@@ -212,14 +212,15 @@ function useMeasuredElement(): Measured {
  */
 function useNodePan(destinationId: string, elements: (HTMLElement | null)[], deps: unknown[]): number {
   const pan = useAtomValue(nodePanXAtom)
-  const setPan = useSetAtom(nodePanXAtom)
+  const reset = useSetAtom(resetNodePanAtom)
   const setRange = useSetAtom(nodePanRangeAtom)
 
   // ノードが変わったら基準の構図へ戻す。行き先が決まった時点（遷移の始まり）で戻すので、
-  // 演出中のカメラは最初から新しいノードの構図へ向かう
+  // 演出中のカメラは最初から新しいノードの構図へ向かう。
+  // ここはばねを挟まない（送り戻しの動きが潜る演出に重なると読み取れない）
   useEffect(() => {
-    setPan(0)
-  }, [destinationId, setPan])
+    reset()
+  }, [destinationId, reset])
 
   useLayoutEffect(() => {
     const lefts = elements.filter((element) => element !== null).map((element) => element.offsetLeft)

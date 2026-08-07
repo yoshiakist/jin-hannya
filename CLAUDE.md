@@ -54,6 +54,7 @@ assets/     svg/(筆文字118) pattern/circle.svg bgm/ sfx/ voice/(未収録)
 - `layout`（`none` / `circle` / `column`）は**ノード側の YAML が持つ**。描画側で決めない。
 - `label` の空白・改行は**大書の列の切れ目**（`headlineLayout`）。字だけが要る場所は `labelText()` を通す（`range` の突き合わせ・グリフ在庫・図の中の子・現在位置インジケータ）。
 - `reading` の空白も**列の切れ目**（`label` と同じ約束）。読みは大書の右、サマリーは大書の左、本文はさらにその左に置く。x は `overlayInsets()` が出す 3 つの目印（大書の左右端・図の左端）から CSS が組むので、間合いを変えるときは `.overlay` の `--reading-gap` / `--summary-gap` / `--doc-gap` を触る。
+- パンは深度で別勘定。L0 は `panXAtom`（＋拡大・縦送り）、**L1 以降は `nodePanXAtom` の左右だけ**。L1 以降のばねは atom 側に 1 つだけ置き、カメラは値をそのまま読む（カメラでも補間すると大書が DOM の本文に遅れてずれる）。本文は `max-width` で切り詰めず、はみ出したぶんはパンで補う。可動域は本文・サマリーの `offsetLeft` の実測から引く。
 - 円相は `assets/pattern/circle.svg` を使う。手続き的生成はしない。断片パス約 40 本も間引かない。
 - 色は `src/scene/materials.ts` と `src/styles.css` のトークンから引く。琥珀（`--focus`）以外の有彩色を足さない。
 
@@ -69,6 +70,7 @@ assets/     svg/(筆文字118) pattern/circle.svg bgm/ sfx/ voice/(未収録)
 
 - `npm run build` は通る。確認環境は headless Chromium（Tier 2 / WebGL2）1440x810。
 - **残作業の本体は遷移演出。** 相の管理と粒子データまではあるが、生存字の連続移動が繋がっておらず（`Transition.tsx` の `visibleGlyphs()` から spring 補間へ）、粒子が画面に出ない（`PointsNodeMaterial` の点サイズを疑っている）。
-- 未確認: BGM / SFX / ダッキング、Tier 3 の `PaperFallback`、パン同期、ホイール／ピンチ拡大、`column` の hover グロー、読み上げ（音源未収録）。
+- L1 以降の左右パンは 900x700 の画面で確認済み（GPU レイヤーと DOM が同じばねで動く）。
+- 未確認: BGM / SFX / ダッキング、Tier 3 の `PaperFallback`、**L0 の**パン同期（16:9 では紙面が収まりパンが起きない）、ホイール／ピンチ拡大、`column` の hover グロー、読み上げ（音源未収録）。
 - 未決: BGM 配信方式（案 A 短尺ループ全長デコード / 案 B 2 要素クロスフェード。**現状は案 B 既定**、`BGM_STRATEGY` 1 定数で切替）、字の大きさの実機基準。
 - 完了条件のチェックは**画面で確認できたものだけ**に付ける。実装しただけのものは外したまま「実装済みだが未確認」に書く。

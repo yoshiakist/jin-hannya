@@ -129,6 +129,16 @@ function CameraRig() {
       camera.updateProjectionMatrix()
       return
     }
+    if (!toRoot) {
+      // L1 以降のばねは atom（`useNodePanSpring`）が持つ。ここで重ねて補間すると
+      // 大書だけが DOM の本文に遅れ、2 つの層がずれて見える
+      camera.position.set(target.current.x, target.current.y, camera.position.z)
+      if (Math.abs(targetZoom - camera.zoom) > 1e-4) {
+        camera.zoom = targetZoom
+        camera.updateProjectionMatrix()
+      }
+      return
+    }
     // spring 相当の指数補間。フレームレートに依らないよう delta で減衰させる
     const k = 1 - Math.exp(-delta * 9)
     camera.position.x += (target.current.x - camera.position.x) * k

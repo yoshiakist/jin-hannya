@@ -5,7 +5,7 @@ import { Overlay } from './overlay/Overlay.tsx'
 import { PaperFallback } from './overlay/PaperFallback.tsx'
 import { useHashRouting } from './nav/router.ts'
 import { tierAtom, phaseAtom, isRootAtom, audioStartedAtom, bgmVolumeAtom } from './nav/atoms.ts'
-import { usePanZoomGesture, panXAtom, panBoundsAtom } from './world/pan.ts'
+import { usePanZoomGesture, useNodePanSpring, panXAtom, panBoundsAtom } from './world/pan.ts'
 import { VIEW_HEIGHT } from './world/paper.ts'
 import { startAudio, playWoosh } from './audio/index.ts'
 
@@ -24,6 +24,8 @@ export function App() {
   // Tier 3 の紙面は DOM の段組みなので拡大に追従できない。そこではパンだけを許す。
   // L1 以降（node）は拡大を持たず、左右のパンだけが効く
   usePanZoomGesture(containerRef, isRoot ? 'paper' : 'node', tier !== 3)
+  // L1 以降のパンのばね。GPU レイヤーと DOM が同じ値を読むよう、補間は atom 側で 1 度だけ掛ける
+  useNodePanSpring()
 
   return (
     <div

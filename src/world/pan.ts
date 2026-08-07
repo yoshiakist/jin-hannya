@@ -11,7 +11,7 @@
  * 拡大すると視野が狭まるぶん可動域は広がり、縦にも送れるようになる。
  */
 
-import { atom, useAtomValue, useSetAtom, type Setter } from 'jotai'
+import { atom, useAtomValue, useSetAtom, useStore, type Setter } from 'jotai'
 import { useEffect, useRef } from 'react'
 import { CELL_X, PAPER_WIDTH, VIEW_HEIGHT } from './paper.ts'
 
@@ -145,33 +145,91 @@ export const canPanLeftAtom = atom((get) => get(panXAtom) > get(panBoundsAtom).m
  * 大書と図は基準の構図に必ず収まっているので、送る先があるのは左だけ。
  * 可動域は本文が画面の左へどれだけはみ出しているかで決まり、それは DOM の組版の結果なので、
  * 実測した値を `nodePanRangeAtom` へ Overlay が入れる。
+ *
+ * **ばねは atom が持つ。** ドラッグは行き先（target）だけを動かし、実際のパン量（current）は
+ * `useNodePanSpring` がそこへ向かって補間する。カメラ側でも補間すると 2 度掛かって
+ * GPU レイヤーが DOM に遅れ、2 つの層がずれて見える（→ Stage.tsx の CameraRig）。
  */
 const nodePanRaw = atom(0)
+const nodePanTargetRaw = atom(0)
 const nodePanRangeRaw = atom(0)
 
-/** ワールド単位での基準からのずれ。書き込みは常に `[-range, 0]` へクランプされる */
-export const nodePanXAtom = atom(
-  (get) => get(nodePanRaw),
+/** ドラッグの行き先。書き込みは常に `[-range, 0]` へクランプされる */
+export const nodePanTargetAtom = atom(
+  (get) => get(nodePanTargetRaw),
   (get, set, update: number | ((previous: number) => number)) => {
-    const next = typeof update === 'function' ? update(get(nodePanRaw)) : update
-    set(nodePanRaw, Math.min(0, Math.max(-get(nodePanRangeRaw), next)))
+    const next = typeof update === 'function' ? update(get(nodePanTargetRaw)) : update
+    set(nodePanTargetRaw, Math.min(0, Math.max(-get(nodePanRangeRaw), next)))
   },
 )
+
+/** いま描くべきパン量（ワールド単位）。カメラも DOM もこの 1 つだけを読む */
+export const nodePanXAtom = atom((get) => get(nodePanRaw))
+
+/** ばねを挟まずその場で基準の構図へ戻す。ノードが変わったときに使う */
+export const resetNodePanAtom = atom(null, (_get, set) => {
+  set(nodePanTargetRaw, 0)
+  set(nodePanRaw, 0)
+})
 
 /** 左へ送れる幅（ワールド単位・0 以上）。ノードや画面寸法が変わるたび Overlay が入れ直す */
 export const nodePanRangeAtom = atom(
   (get) => get(nodePanRangeRaw),
   (_get, set, range: number) => {
     set(nodePanRangeRaw, Math.max(0, range))
-    // 可動域が縮んだら現在位置を新しい範囲へ入れ直す
-    set(nodePanXAtom, (x) => x)
+    // 可動域が縮んだら行き先を新しい範囲へ入れ直す（ばねが現在位置を連れてくる）
+    set(nodePanTargetAtom, (x) => x)
   },
 )
 
 /** L1 以降で左にまだ本文が残っているか。左矢印の明滅の可否 */
 export const canNodePanLeftAtom = atom(
-  (get) => get(nodePanRaw) > -get(nodePanRangeRaw) + 1e-3,
+  (get) => get(nodePanTargetRaw) > -get(nodePanRangeRaw) + 1e-3,
 )
+
+/** 行き先への追従の速さ（1/秒）。L0 のカメラ補間と同じ係数で、指を離しても同じ手触りになる */
+const NODE_PAN_FOLLOW = 9
+/** これ以下の差は動きとして見えない。ワールド単位（1px の 1/100 未満） */
+const NODE_PAN_EPSILON = 1e-4
+
+/**
+ * L1 以降のパンのばね。行き先へ向かって毎フレーム詰める。
+ *
+ * カメラではなく atom を動かすのが要点で、GPU レイヤーの大書と DOM の本文が
+ * **同じ値**を読む以上、両者に速度差が生まれない。App が 1 度だけ取り付ける。
+ */
+export function useNodePanSpring(): void {
+  const store = useStore()
+  // 行き先が動いたらばねを起こす。値そのものはフレームごとに store から読む
+  const target = useAtomValue(nodePanTargetAtom)
+
+  useEffect(() => {
+    const settled = () =>
+      Math.abs(store.get(nodePanTargetAtom) - store.get(nodePanXAtom)) < NODE_PAN_EPSILON
+    if (settled()) return
+
+    let raf = 0
+    let last = performance.now()
+    const tick = (now: number) => {
+      // 行き先も現在位置も毎フレーム読み直す。ノードが変わったときの即時リセット
+      // （`resetNodePanAtom`）と競っても、取り残された 1 フレームが古い値を書き戻さない
+      if (settled()) return
+      // タブが戻ったときの巨大な delta で飛ばさないよう頭を抑える。
+      // 下も抑える: rAF の時刻はフレームの開始時刻なので、直前に読んだ performance.now() より
+      // 前になることがある。負の delta は補間係数を負にし、行き先と逆へ弾く
+      const delta = Math.max(0, Math.min(0.05, (now - last) / 1000))
+      last = now
+      const goal = store.get(nodePanTargetAtom)
+      const current = store.get(nodePanXAtom)
+      const next = current + (goal - current) * (1 - Math.exp(-delta * NODE_PAN_FOLLOW))
+      store.set(nodePanRaw, Math.abs(goal - next) < NODE_PAN_EPSILON ? goal : next)
+      if (settled()) return
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [store, target])
+}
 
 /** 画面 1px が何ワールド単位か。視野高が VIEW_HEIGHT / zoom に固定されているので高さから決まる */
 export function unitsPerPixel(zoom: number): number {
@@ -205,7 +263,7 @@ export function usePanZoomGesture(
   allowZoom = true,
 ): void {
   const setPan = useSetAtom(panXAtom)
-  const setNodePan = useSetAtom(nodePanXAtom)
+  const setNodePan = useSetAtom(nodePanTargetAtom)
   const setPanY = useSetAtom(panYAtom)
   const setZoom = useSetAtom(zoomAtom)
   const zoom = useAtomValue(zoomAtom)
