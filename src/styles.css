@@ -205,14 +205,14 @@ body {
 
 .breadcrumb {
   position: absolute;
-  top: 12vh;
+  top: 6vh;
   left: clamp(14px, 2.2vw, 30px);
   display: flex;
   align-items: flex-start;
-  gap: 10px;
+  gap: 8px;
   /* 筆文字ではなく通常書体。大書との役割を明確に分ける */
   font-family: var(--sans);
-  font-size: clamp(10px, 1.2vh, 12px);
+  font-size: clamp(16px, 1.6vh, 18px);
 }
 
 .breadcrumb__rule {
@@ -227,7 +227,7 @@ body {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 1.4em;
+  gap: 0.7em;
 }
 
 .breadcrumb button {
@@ -237,8 +237,10 @@ body {
   padding: 0;
   color: var(--text-dim);
   font: inherit;
-  writing-mode: vertical-rl;
-  letter-spacing: 0.3em;
+  /* 積み方は縦だが、字そのものは横組み（大書の縦組みと役割を分ける） */
+  writing-mode: horizontal-tb;
+  letter-spacing: 0.2em;
+  white-space: nowrap;
   cursor: pointer;
   transition: color 0.35s ease;
 }

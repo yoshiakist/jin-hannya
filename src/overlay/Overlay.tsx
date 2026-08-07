@@ -238,7 +238,7 @@ function useNodePan(destinationId: string, elements: (HTMLElement | null)[], dep
 
 /**
  * 現在位置インジケータ。
- * 画面端に 1 本の白い縦線を引き、先祖ノードを縦に積む。筆文字にせず通常書体で組む。
+ * 画面端に 1 本の白い縦線を引き、先祖ノードを縦に積む。字は横組み・通常書体。
  * 深さ = 潜水深度のメタファー。
  */
 function Breadcrumb() {

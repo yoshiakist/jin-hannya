@@ -199,8 +199,11 @@ function diagramLeftEdge(node: GraphNode, children: GraphNode[]): number | null 
 /**
  * 本文の左に残したい余白（px）。現在位置インジケータと重ねないための下限。
  * L1 以降のパンはここまで本文の左端を引き出せれば十分なので、可動域の基準にもなる。
+ *
+ * インジケータの幅ぶんではなく、読み切ったところで**空白が開く**だけ取る。
+ * 最後の列まで送ったとき左に間ができて、そこにナビゲーションがあると気づける。
  */
-export const DOC_EDGE_PX = 56
+export const DOC_EDGE_PX = 200
 
 export interface OverlayInsets {
   /** 大書の右端。ここより右が読み（かな）の帯 */
