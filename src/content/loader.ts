@@ -7,7 +7,7 @@
  */
 
 import { GraphNode, DocFrontmatter } from './schema.ts'
-import { SUTRA_CHARS, sliceOfRange } from './sutra.ts'
+import { SUTRA_CHARS, SUTRA_LENGTH, sliceOfRange } from './sutra.ts'
 
 const yamlModules = import.meta.glob<{ default: unknown }>('#content/graph/*.yaml', {
   eager: true,
@@ -98,6 +98,23 @@ export function childrenOf(node: GraphNode): GraphNode[] {
     return child ? [child] : []
   })
 }
+
+/**
+ * 全文の文字インデックス → その字が属する句（根の子）の id。範囲外の字は null。
+ *
+ * L0 で触れられるのは根の子だけなので、その `range` を展開して 1 本の表にしておく。
+ * hover の判定と、遷移で「どの字が次の見出しへ持ち越されるか」の判定が同じ表を引く。
+ * 同じ字が紙面に何度現れても、持ち越されるのは選んだ句の位置にある字だけになる。
+ */
+export const SUTRA_INDEX_TO_NODE: readonly (string | null)[] = (() => {
+  const table: (string | null)[] = new Array(SUTRA_LENGTH).fill(null)
+  for (const child of childrenOf(root)) {
+    if (!child.range) continue
+    const [start, end] = child.range
+    for (let i = start; i < end && i < table.length; i++) table[i] = child.id
+  }
+  return table
+})()
 
 /** 根から `node` までの経路。現在位置インジケータとルーティングが使う */
 export function ancestryOf(node: GraphNode): GraphNode[] {

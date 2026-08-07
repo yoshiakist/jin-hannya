@@ -24,30 +24,18 @@ import {
   inkShade,
   inkAlpha,
   approach,
+  transitionAlpha,
 } from './materials.ts'
 import { CELL_X, CELL_Y, gridPosition } from '../world/paper.ts'
 import { navAtom, acceptsInputAtom } from '../nav/atoms.ts'
-import { root, childrenOf } from '../content/loader.ts'
+import { SUTRA_INDEX_TO_NODE } from '../content/loader.ts'
+import { carriedNodeId } from './carry.ts'
 
 /** 各文字が基準位置から微小にゆらぐ幅（ワールド単位） */
 const SWAY = 0.035
 
 /** 滲みの最大の濃さ */
 const GLOW_STRENGTH = 0.5
-
-/**
- * 文字インデックス → 潜り先ノード id。
- * L0 で触れられるのは根の子（句）だけなので、その range を展開して引ける表にしておく。
- */
-function buildIndexToNode(): (string | null)[] {
-  const table: (string | null)[] = new Array(SUTRA_CHARS.length).fill(null)
-  for (const child of childrenOf(root)) {
-    if (!child.range) continue
-    const [start, end] = child.range
-    for (let i = start; i < end && i < table.length; i++) table[i] = child.id
-  }
-  return table
-}
 
 interface CharGroup {
   char: string
@@ -56,7 +44,8 @@ interface CharGroup {
 }
 
 export function Paper() {
-  const indexToNode = useMemo(buildIndexToNode, [])
+  // 文字インデックス → 潜り先の句 id。hover 判定と持ち越し判定が同じ表を引く
+  const indexToNode = SUTRA_INDEX_TO_NODE
 
   const groups = useMemo<CharGroup[]>(() => {
     const byChar = new Map<string, number[]>()
@@ -105,7 +94,7 @@ function swayAt(index: number, t: number): { x: number; y: number; rotation: num
  * 板は矩形だが、光の形は字ごとの符号付き距離場（`createGlowMaterial`）が決めるので、
  * どの字も同じ丸い光にはならず、滲みの縁が字形をなぞる。
  */
-function FocusGlow({ indexToNode }: { indexToNode: (string | null)[] }) {
+function FocusGlow({ indexToNode }: { indexToNode: readonly (string | null)[] }) {
   const meshRef = useRef<InstancedMesh>(null)
   const dummy = useMemo(() => new Object3D(), [])
   const nav = useAtomValue(navAtom)
@@ -183,7 +172,7 @@ function FocusGlow({ indexToNode }: { indexToNode: (string | null)[] }) {
  * ポインタ位置をワールド座標から格子インデックスへ落とすことで hover 判定にする。
  * 276 個の当たり判定を持たせるより安く、範囲が列をまたいでも破綻しない。
  */
-function HoverPlane({ indexToNode }: { indexToNode: (string | null)[] }) {
+function HoverPlane({ indexToNode }: { indexToNode: readonly (string | null)[] }) {
   const dispatch = useSetAtom(navAtom)
   const accepts = useAtomValue(acceptsInputAtom)
 
@@ -230,7 +219,7 @@ function HoverPlane({ indexToNode }: { indexToNode: (string | null)[] }) {
  * WebGPURenderer のノードマテリアル経路では instanceColor が期待どおりに効かないためで、
  * 属性を自前で持てば Tier 1 / Tier 2 のどちらでも同じ結果になる。
  */
-function CharInstances({ group, indexToNode }: { group: CharGroup; indexToNode: (string | null)[] }) {
+function CharInstances({ group, indexToNode }: { group: CharGroup; indexToNode: readonly (string | null)[] }) {
   const meshRef = useRef<InstancedMesh>(null)
   const dummy = useMemo(() => new Object3D(), [])
   const nav = useAtomValue(navAtom)
@@ -244,6 +233,15 @@ function CharInstances({ group, indexToNode }: { group: CharGroup; indexToNode: 
     [group.indices.length],
   )
   const focusTarget = useMemo(() => new Float32Array(group.indices.length), [group.indices.length])
+
+  /**
+   * 1 = 次の見出しへ持ち越される字。
+   * 同じ字が紙面に何度現れても、選んだ句の位置にある字だけが立つ（char ではなく index で判定する）。
+   */
+  const persist = useMemo(
+    () => new InstancedBufferAttribute(new Float32Array(group.indices.length), 1),
+    [group.indices.length],
+  )
 
   /** 墨のムラの種。同じ字が紙面に何度出ても違うムラになるよう、全文インデックスから引く */
   const seed = useMemo(() => {
@@ -261,8 +259,9 @@ function CharInstances({ group, indexToNode }: { group: CharGroup; indexToNode: 
     // glyphGeometry は字ごとに 1 つを返し、CharInstances も字ごとに 1 つ。属性を足して衝突しない
     base.setAttribute('aFocus', focus)
     base.setAttribute('aSeed', seed)
+    base.setAttribute('aPersist', persist)
     return base
-  }, [group.char, focus, seed])
+  }, [group.char, focus, seed, persist])
 
   /** hover 中に、フォーカス外の字をどこまで沈めるか（0 = 沈めない） */
   const dim = useMemo(() => uniform(0), [])
@@ -277,7 +276,11 @@ function CharInstances({ group, indexToNode }: { group: CharGroup; indexToNode: 
     const density = mix(inkDensity(attribute<'float'>('aSeed', 'float')), 1, focused.mul(0.7))
     nodeMaterial.colorNode = base.mul(inkShade(density))
     // 光る字だけ不透明度も上げ、グローの芯にする
-    nodeMaterial.opacityNode = mix(mix(0.94, 0.55, dim), 1, focused).mul(inkAlpha(density))
+    // 遷移中は紙面ぜんたいがこの係数で薄れる（潜る＝散開に合わせて消え、戻ると現れる）。
+    // ただし選んだ句の字だけは持ち越し側を読むので、薄れずにそのまま次の見出しへ渡る
+    nodeMaterial.opacityNode = mix(mix(0.94, 0.55, dim), 1, focused)
+      .mul(inkAlpha(density))
+      .mul(transitionAlpha(attribute<'float'>('aPersist', 'float')))
     return nodeMaterial
   }, [dim])
 
@@ -306,6 +309,19 @@ function CharInstances({ group, indexToNode }: { group: CharGroup; indexToNode: 
     }
     if (moved) focus.needsUpdate = true
     dim.value = approach(dim.value, dimTarget.current, delta)
+
+    // 持ち越される字（＝選んだ句）。相ではなく id の一致で決まるので毎フレーム引き直す
+    const carried = carriedNodeId()
+    const persistArray = persist.array as Float32Array
+    let switched = false
+    group.indices.forEach((index, i) => {
+      const next = carried !== null && indexToNode[index] === carried ? 1 : 0
+      if (persistArray[i] !== next) {
+        persistArray[i] = next
+        switched = true
+      }
+    })
+    if (switched) persist.needsUpdate = true
 
     group.indices.forEach((index, i) => {
       const { x, y, rotation } = swayAt(index, t)

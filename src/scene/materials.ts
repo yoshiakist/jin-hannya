@@ -50,6 +50,34 @@ export function approach(current: number, target: number, delta: number, duratio
   return current + Math.sign(diff) * step
 }
 
+/* ---- 遷移中の濃さ ---------------------------------------------------------
+ * 深度をまたぐあいだ、字のメッシュぜんたいに掛かる係数（0 = 消えている）。
+ *
+ * 字は粒子と違って 1 枚のメッシュなので、CPU 側で色を書き換えても
+ * ノードマテリアルの不透明度には効かない。**シェーダの `opacityNode` に掛ける**必要があり、
+ * かつ紙面の全インスタンスへ一斉に効かせたいので、ここに 1 本だけユニフォームを置いて
+ * 墨・滲み・枠線のすべてがこれを読む。値を進めるのは Transition.tsx の `StageFade`。
+ */
+export const stageOpacity = uniform(1)
+
+/**
+ * **持ち越される字**（選んだ句 = 次の見出しになる字）だけが読むもう 1 本。
+ * 遷移のあいだは 0 … その字は Transition が出発点から行き先へ動かしながら描いている。
+ * 差し替わったあとは 1 … もう行き先の位置に置き換わっているので、改めて現れさせない。
+ * 選んだ字だけは薄れも現れもせず、ひと続きに次の見出しへ渡る。
+ */
+export const carryOpacity = uniform(0)
+
+/** `persist` が 1 の字は持ち越し側の濃さを読む */
+export function transitionAlpha(persist: Node<'float'>): Node<'float'> {
+  return mix(stageOpacity, carryOpacity, persist)
+}
+
+/** 線・枠など、ノードマテリアルでないものが読む同じ値 */
+export function stageOpacityValue(): number {
+  return stageOpacity.value as number
+}
+
 /* ---- 墨の質感 -------------------------------------------------------------
  * グリフの塗りを均一な白ではなく、濃淡とかすれのある墨に見せる。
  * テクスチャは持たず全て手続き的（README「ランタイムで SVG を触らない」に抵触しない）。
@@ -176,7 +204,13 @@ function glowFalloff(cell: Node<'float'>, local: Node<'vec2'>): Node<'float'> {
  * `cell` はアトラスのセル番号（インスタンス属性でもユニフォームでもよい）、
  * `amount` は 0〜1 の濃さ。加算合成なので、字の墨そのものは白く飛ばない。
  */
-export function createGlowMaterial(cell: Node<'float'>, amount: Node<'float'>, color: Color = FOCUS_GLOW): MeshBasicNodeMaterial {
+export function createGlowMaterial(
+  cell: Node<'float'>,
+  amount: Node<'float'>,
+  color: Color = FOCUS_GLOW,
+  /** 1 なら持ち越される字。遷移中の濃さを字の墨と揃える */
+  persist: Node<'float'> | number = 0,
+): MeshBasicNodeMaterial {
   const material = new MeshBasicNodeMaterial({
     transparent: true,
     depthWrite: false,
@@ -185,7 +219,21 @@ export function createGlowMaterial(cell: Node<'float'>, amount: Node<'float'>, c
   })
   material.colorNode = vec3(color.r, color.g, color.b)
   // PlaneGeometry(1,1) の字面ローカル [-0.5, 0.5] を、セル内の 0..1 へ
-  material.opacityNode = glowFalloff(cell, positionGeometry.xy.add(0.5)).mul(amount)
+  material.opacityNode = glowFalloff(cell, positionGeometry.xy.add(0.5))
+    .mul(amount)
+    .mul(transitionAlpha(typeof persist === 'number' ? float(persist) : persist))
+  return material
+}
+
+/**
+ * 図の連結線・区切りなど、字ではない細い描線のマテリアル。
+ * 遷移では字と同じ濃さで出入りさせたいので、`stageOpacity` を通すためだけに
+ * `meshBasicMaterial` ではなくノードマテリアルで持つ。
+ */
+export function createStrokeMaterial(opacity = 0.55, color: Color = STROKE): MeshBasicNodeMaterial {
+  const material = new MeshBasicNodeMaterial({ transparent: true, depthWrite: false, toneMapped: false })
+  material.colorNode = vec3(color.r, color.g, color.b)
+  material.opacityNode = stageOpacity.mul(opacity)
   return material
 }
 
@@ -193,23 +241,33 @@ export function createGlowMaterial(cell: Node<'float'>, amount: Node<'float'>, c
  * 墨の質感を持つ単体グリフ用マテリアル（インスタンス化しない大書・図・円相）。
  * 色と不透明度はユニフォームなので、hover での差し替えでシェーダを組み直さない。
  */
-export function createInkMaterial(): {
+export function createInkMaterial(
+  /**
+   * false にすると遷移の濃さ（`stageOpacity` / `carryOpacity`）に従わない。
+   * 遷移中に持ち越しの字を自前で動かしながら描く Transition だけが使う。
+   */
+  followsTransition = true,
+): {
   material: MeshBasicNodeMaterial
   color: { value: Color }
   opacity: { value: number }
   seed: { value: number }
   /** その字のワールドでの一辺。メッシュの scale と同じ値を入れる */
   scale: { value: number }
+  /** 1 = 次の見出しへ持ち越される字。遷移で薄れず、`carryOpacity` に従う */
+  persist: { value: number }
 } {
   const color = uniform(INK.clone())
   const opacity = uniform(1)
   const seed = uniform(0)
   const scale = uniform(1)
+  const persist = uniform(0)
 
   const material = new MeshBasicNodeMaterial({ transparent: true, toneMapped: false })
   const density = inkDensity(seed, scale)
   material.colorNode = color.mul(inkShade(density))
-  material.opacityNode = opacity.mul(inkAlpha(density))
+  const alpha = opacity.mul(inkAlpha(density))
+  material.opacityNode = followsTransition ? alpha.mul(transitionAlpha(persist)) : alpha
 
-  return { material, color, opacity, seed, scale }
+  return { material, color, opacity, seed, scale, persist }
 }

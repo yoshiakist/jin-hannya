@@ -12,7 +12,7 @@ import { useAtomValue, useSetAtom } from 'jotai'
 import * as THREE from 'three/webgpu'
 import { Paper } from './Paper.tsx'
 import { NodeStage } from './NodeStage.tsx'
-import { Transition } from './Transition.tsx'
+import { Transition, StageFade } from './Transition.tsx'
 import { loadGlyphs } from './glyphs.ts'
 import { cappedDpr, measureFrameBudget } from './tier.ts'
 import { VIEW_HEIGHT } from '../world/paper.ts'
@@ -108,6 +108,8 @@ function SceneContent() {
       <CameraRig />
       <FrameBudget />
       {showPaper ? <Paper /> : <NodeStage />}
+      {/* 字の出入りは粒子と別勘定。Tier 3 でも尺を揃えるため Transition と分けて常に置く */}
+      <StageFade />
       <Transition />
     </>
   )

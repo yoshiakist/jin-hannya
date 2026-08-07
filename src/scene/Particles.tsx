@@ -18,8 +18,8 @@ import { useEffect, useMemo } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { useAtomValue } from 'jotai'
 import { InstancedBufferAttribute } from 'three'
-import { PointsNodeMaterial } from 'three/webgpu'
-import { bufferAttribute, uniform, mix, float, vec3, smoothstep, sin, cos, uv, length } from 'three/tsl'
+import { PointsNodeMaterial, type Node } from 'three/webgpu'
+import { bufferAttribute, uniform, mix, float, vec3, smoothstep, sin, cos, uv, length, clamp } from 'three/tsl'
 import { glyphParticles } from './glyphs.ts'
 import { FOCUS_GLOW, INK } from './materials.ts'
 import { tierAtom, particleScaleAtom } from '../nav/atoms.ts'
@@ -50,6 +50,20 @@ const UP_BIAS = 1 / 3
 const RISE = 1.2
 const SWAY = 0.1
 const SWAY_OMEGA: [number, number] = [2, 7]
+
+/**
+ * 濃さの立ち上がり／落ちの尺（進行度 τ に対する比）。
+ *
+ * **字（Transition.tsx の `glyphFade`）とは別の尺**である。字は素早く消え、粒子はそのあとも
+ * 残って上へ流れていく。字が消えたあとの画面に居るのは粒子だけ、という状態を作るのが狙いなので、
+ * ここを字と揃えてはいけない。
+ *   DISPERSE_HOLD … 散開で不透明のまま持ちこたえる冒頭。ここを過ぎると 2 乗で落ちる
+ *   DISPERSE_GONE … 散開が消えきる時点。尺いっぱいまで使って、ふわりと薄れて残る
+ *   CONVERGE_FADE_IN … 凝集で 2 乗で立ち上がりきるまで。以降は形に収まるまで不透明
+ */
+const DISPERSE_HOLD = 0.3
+const DISPERSE_GONE = 1
+const CONVERGE_FADE_IN = 0.55
 
 /** 同時に生かす粒子の総数の上限。ティアごとに 1 桁ずつ落とす（README「性能ティアごとの落とし所」） */
 const TOTAL_PARTICLE_CAP: Record<1 | 2 | 3, number> = {
@@ -190,8 +204,18 @@ export function TransitionParticles({
     // 数 px の粒なので縁は硬く切らず、外側 2 割ほどを滑らかに落としてジャギを消す
     const disc = smoothstep(0.5, 0.32, length(uv().sub(0.5)))
 
-    // 散り際・現れ際に消える。芯の色は琥珀寄り、落ち着いた側は墨の白
-    const fade = float(1).sub(smoothstep(0.55, 1, t))
+    // 散り際・現れ際の濃さ。ここも潜る／戻るで非対称にする（README「遷移演出」）。
+    //   散開 … `DISPERSE_HOLD` まで濃さを保ち、そこから 2 乗のカーブでふわりと薄れて消える
+    //   凝集 … 無から 2 乗のカーブで立ち上がり、形に収まるころには出そろっている
+    // どちらも t（= home からの隔たり）で書くので、下の 2 本は同じ向きの式にならない
+    const ramp = (x: Node<'float'>): Node<'float'> => {
+      const k = clamp(x, 0, 1)
+      return k.mul(k)
+    }
+    const fade =
+      mode === 'disperse'
+        ? ramp(float(DISPERSE_GONE).sub(t).div(DISPERSE_GONE - DISPERSE_HOLD))
+        : ramp(float(1).sub(t).div(CONVERGE_FADE_IN))
     material.opacityNode = fade.mul(disc).mul(0.85)
     material.colorNode = mix(
       vec3(FOCUS_GLOW.r, FOCUS_GLOW.g, FOCUS_GLOW.b),

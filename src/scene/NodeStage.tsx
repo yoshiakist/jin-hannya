@@ -15,7 +15,18 @@ import { useAtomValue, useSetAtom } from 'jotai'
 import { BufferGeometry, Color, Group, Line, LineBasicMaterial, PlaneGeometry, Vector3 } from 'three'
 import { uniform } from 'three/tsl'
 import { glyphGeometry, glyphParticles, sdfCellOf, CIRCLE_KEY } from './glyphs.ts'
-import { INK, FOCUS, STROKE, GLOW_PLANE, createGlowMaterial, createInkMaterial, approach } from './materials.ts'
+import {
+  INK,
+  FOCUS,
+  STROKE,
+  GLOW_PLANE,
+  createGlowMaterial,
+  createInkMaterial,
+  createStrokeMaterial,
+  stageOpacityValue,
+  approach,
+} from './materials.ts'
+import { carriedNodeId } from './carry.ts'
 import { VIEW_HEIGHT } from '../world/paper.ts'
 import { navAtom, currentNodeAtom, childNodesAtom, acceptsInputAtom } from '../nav/atoms.ts'
 import type { GraphNode } from '../content/schema.ts'
@@ -48,7 +59,71 @@ export function headlinePosition(index: number, perColumn: number, total: number
   return [HEADLINE_X - column * size * 1.15, ((rows - 1) / 2 - row) * size, 0]
 }
 /** 子の図の中心 x。左の解説と右の大書に挟まれた帯の中央に置く */
-const DIAGRAM_X = 0
+export const DIAGRAM_X = 0
+
+/** 図の中の子ノード 1 つぶんの配置。位置は図の原点（`DIAGRAM_X`）からの相対 */
+export interface DiagramItem {
+  node: GraphNode
+  position: [number, number]
+  /** 字面の一辺 */
+  size: number
+  /** 角丸枠を持つか。枠の中は横組み、無いものは縦組みになる */
+  frame: boolean
+}
+
+/**
+ * 子の図の配置。
+ *
+ * 遷移で「子の字がそのまま次の見出しへ移る」ためには、Transition が描画とまったく同じ
+ * 位置・大きさを引けなければならない。配置の数値はここ 1 箇所だけが持つ。
+ */
+export function diagramItems(node: GraphNode, children: GraphNode[]): DiagramItem[] {
+  if (node.layout === 'circle') {
+    const diameter = VIEW_HEIGHT * 0.58
+    const radius = diameter * 0.34
+    return children.map((child, i) => {
+      // 頂点付近から時計回りに 1 つずつ
+      const angle = Math.PI / 2 - (i / children.length) * Math.PI * 2
+      return {
+        node: child,
+        position: [Math.cos(angle) * radius, Math.sin(angle) * radius] as [number, number],
+        size: diameter * 0.17,
+        frame: false,
+      }
+    })
+  }
+
+  if (node.layout === 'column') {
+    const { pitch, size, top } = columnMetrics(children.length)
+    return children.map((child, i) => ({
+      node: child,
+      position: [0, top - i * pitch] as [number, number],
+      size,
+      frame: true,
+    }))
+  }
+
+  return []
+}
+
+/** 縦連結レイアウトの寸法。図の描画と連結線が同じ値を読む */
+function columnMetrics(count: number): { pitch: number; size: number; top: number } {
+  const pitch = (VIEW_HEIGHT * 0.78) / Math.max(count, 1)
+  return {
+    pitch,
+    size: Math.min(pitch * 0.42, VIEW_HEIGHT * 0.075),
+    top: ((count - 1) / 2) * pitch,
+  }
+}
+
+/** 子ノードの `index` 番目の字の、その子の中心からの相対位置 */
+export function childCharOffset(index: number, count: number, size: number, frame: boolean): [number, number] {
+  return frame
+    ? // 枠の中は横組み。左から右へ読む
+      [(index - (count - 1) / 2) * size * 1.08, 0]
+    : // 図の中の縦組み。上から下へ読む
+      [0, ((count - 1) / 2 - index) * size * 1.08]
+}
 
 /** 滲みの最大の濃さ。広がりは距離場が決めるので、ここで持つのは強さだけ */
 const GLOW_OPACITY = 0.5
@@ -60,8 +135,8 @@ export function NodeStage() {
   return (
     <group>
       <Headline node={node} />
-      {node.layout === 'circle' && <CircleLayout nodes={children} />}
-      {node.layout === 'column' && <ColumnLayout nodes={children} />}
+      {node.layout === 'circle' && <CircleLayout items={diagramItems(node, children)} />}
+      {node.layout === 'column' && <ColumnLayout items={diagramItems(node, children)} />}
     </group>
   )
 }
@@ -79,6 +154,8 @@ function Headline({ node }: { node: GraphNode }) {
           position={headlinePosition(i, perColumn, chars.length, size)}
           size={size}
           color={INK}
+          // 潜って来た／これから戻る字。遷移では薄れず、図の位置とのあいだを動く
+          owner={node.id}
         />
       ))}
     </group>
@@ -89,26 +166,15 @@ function Headline({ node }: { node: GraphNode }) {
  * 円相レイアウト。
  * 外周は assets/pattern/circle.svg（手続き的生成はしない）。子は円周上へ均等配置し、中心は空ける。
  */
-function CircleLayout({ nodes }: { nodes: GraphNode[] }) {
+function CircleLayout({ items }: { items: DiagramItem[] }) {
   const diameter = VIEW_HEIGHT * 0.58
-  const radius = diameter * 0.34
 
   return (
     <group position={[DIAGRAM_X, 0, 0]}>
       <Glyph char={CIRCLE_KEY} position={[0, 0, -0.2]} size={diameter} color={STROKE} opacity={0.55} />
-      {nodes.map((child, i) => {
-        // 頂点付近から時計回りに 1 つずつ
-        const angle = Math.PI / 2 - (i / nodes.length) * Math.PI * 2
-        return (
-          <ChildNode
-            key={child.id}
-            node={child}
-            position={[Math.cos(angle) * radius, Math.sin(angle) * radius, 0]}
-            size={diameter * 0.17}
-            frame={false}
-          />
-        )
-      })}
+      {items.map((item) => (
+        <ChildNode key={item.node.id} item={item} />
+      ))}
     </group>
   )
 }
@@ -118,40 +184,36 @@ function CircleLayout({ nodes }: { nodes: GraphNode[] }) {
  * 角丸矩形を縦に等間隔で並べ、中央を通る 1 本の細い縦線で連結する。
  * hover では文字と枠の両方が琥珀に光る（img_03 の文字のみの発光との違い）。
  */
-function ColumnLayout({ nodes }: { nodes: GraphNode[] }) {
-  const pitch = (VIEW_HEIGHT * 0.78) / Math.max(nodes.length, 1)
-  const size = Math.min(pitch * 0.42, VIEW_HEIGHT * 0.075)
-  const top = ((nodes.length - 1) / 2) * pitch
+function ColumnLayout({ items }: { items: DiagramItem[] }) {
+  // 連結線も字と同じ濃さで出入りさせる（stageOpacity を通すためノードマテリアルで持つ）
+  const link = useMemo(() => createStrokeMaterial(0.55), [])
+  useEffect(() => () => link.dispose(), [link])
+  const { pitch, size } = columnMetrics(items.length)
   // 箱の高さぶんを除いた「あいだ」だけに線を引く。箱を貫かせない
   const gap = Math.max(0, pitch - size * 1.9)
 
   return (
       <group position={[DIAGRAM_X, 0, 0]}>
-        {nodes.slice(0, -1).map((child, i) => (
-          <mesh key={`link-${child.id}`} position={[0, top - i * pitch - pitch / 2, -0.3]}>
+        {items.slice(0, -1).map((item) => (
+          <mesh
+            key={`link-${item.node.id}`}
+            position={[0, item.position[1] - pitch / 2, -0.3]}
+            material={link}
+          >
             <planeGeometry args={[0.02, gap]} />
-            <meshBasicMaterial color={STROKE} transparent opacity={0.55} toneMapped={false} />
           </mesh>
         ))}
-        {nodes.map((child, i) => (
-          <ChildNode key={child.id} node={child} position={[0, top - i * pitch, 0]} size={size} frame />
+        {items.map((item) => (
+          <ChildNode key={item.node.id} item={item} />
         ))}
       </group>
     )
 }
 
 /** 図中の子ノード 1 つ。hover で琥珀に発光し、クリックで一段潜る */
-function ChildNode({
-  node,
-  position,
-  size,
-  frame,
-}: {
-  node: GraphNode
-  position: [number, number, number]
-  size: number
-  frame: boolean
-}) {
+function ChildNode({ item }: { item: DiagramItem }) {
+  const { node, size, frame } = item
+  const position: [number, number, number] = [item.position[0], item.position[1], 0]
   const dispatch = useSetAtom(navAtom)
   const accepts = useAtomValue(acceptsInputAtom)
   const hoveredId = useAtomValue(navAtom).hoveredId
@@ -176,22 +238,21 @@ function ChildNode({
     >
       {frame && <RoundedFrame width={width} height={height} focused={hovered} />}
       {/* 枠の中では字を横に並べる。縦組みの図では 1 字ずつ縦に積む */}
-      {chars.map((char, i) => (
-        <Glyph
-          key={`${char}-${i}`}
-          char={char}
-          position={
-            frame
-              ? // 枠の中は横組み。左から右へ読む
-                [(i - (chars.length - 1) / 2) * size * 1.08, 0, 0]
-              : // 図の中の縦組み。上から下へ読む
-                [0, ((chars.length - 1) / 2 - i) * size * 1.08, 0]
-          }
-          size={size}
-          color={INK}
-          focused={hovered}
-        />
-      ))}
+      {chars.map((char, i) => {
+        const [dx, dy] = childCharOffset(i, chars.length, size, frame)
+        return (
+          <Glyph
+            key={`${char}-${i}`}
+            char={char}
+            position={[dx, dy, 0]}
+            size={size}
+            color={INK}
+            focused={hovered}
+            // この子へ潜る／この子から戻るときは、ここの字がそのまま大書へ渡る
+            owner={node.id}
+          />
+        )
+      })}
       {/* 当たり判定。字の隙間で hover が切れないように矩形で覆う。
           visible={false} だとレイキャストされないため、透明にして残す */}
       <mesh position={[0, 0, 0.1]}>
@@ -239,7 +300,10 @@ function RoundedFrame({ width, height, focused }: { width: number; height: numbe
   const amount = useRef(0)
   useFrame((_, delta) => {
     amount.current = approach(amount.current, focused ? 1 : 0, delta)
-    ;(line.material as LineBasicMaterial).color.copy(STROKE).lerp(FOCUS, amount.current)
+    const material = line.material as LineBasicMaterial
+    material.color.copy(STROKE).lerp(FOCUS, amount.current)
+    // 枠は Line なのでノードマテリアルを持てない。同じ値を CPU 側から掛ける
+    material.opacity = 0.75 * stageOpacityValue()
   })
 
   return <primitive object={line} />
@@ -253,6 +317,7 @@ export function Glyph({
   color,
   opacity = 1,
   focused = false,
+  owner,
 }: {
   char: string
   position: [number, number, number]
@@ -261,6 +326,8 @@ export function Glyph({
   opacity?: number
   /** 琥珀への発色と滲み。切り替えは瞬時ではなく FOCUS_FADE 秒かけて渡る */
   focused?: boolean
+  /** この字が属するノード id。遷移で持ち越される側かどうかの判定に使う */
+  owner?: string
 }) {
   const geometry = useMemo(() => glyphGeometry(char), [char])
   const groupRef = useRef<Group>(null)
@@ -291,6 +358,9 @@ export function Glyph({
   // 大書もわずかにゆらぐ。紙面と同じ運動則にすることで、潜っても同じ場だと分かる
   const phase = useMemo(() => (char.charCodeAt(0) % 97) / 97 * Math.PI * 2, [char])
   useFrame(({ clock }, delta) => {
+    // 持ち越される字は遷移中こちらでは描かない（Transition が動かしながら描く）。
+    // 相ではなく id の一致で決まるので、React の再レンダーを待たずフレームごとに引く
+    ink.persist.value = owner !== undefined && owner === carriedNodeId() ? 1 : 0
     focusAmount.current = approach(focusAmount.current, focused ? 1 : 0, delta)
     // 墨から琥珀へじわりと寄せ、同じ量で滲みを焚く
     ink.color.value.copy(color).lerp(FOCUS, focusAmount.current)
