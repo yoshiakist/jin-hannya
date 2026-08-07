@@ -1,0 +1,267 @@
+/**
+ * SVG → メッシュ + 粒子サンプルの前計算。
+ *
+ * README「グリフの扱い（演出の核）」より。
+ * ランタイムで SVG をサンプリングしないのがスマホ性能上の要点なので、
+ * 三角形分割も粒子サンプリングもここで済ませ、バイナリで同梱する。
+ *
+ * 出力
+ *   public/glyphs/mesh.bin      … 頂点座標(f32 xy) + インデックス(u32) を全字ぶん連結
+ *   public/glyphs/particles.bin … 粒子ホームポジション(f32 xy) を全字ぶん連結
+ *   src/generated/glyphs.json   … 上記へのオフセット表
+ *
+ * 座標系は three に合わせて **Y 上向き**、字面が `[-0.5, 0.5]^2` に収まるよう正規化する。
+ */
+
+import { readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { dirname, join, basename } from 'node:path'
+import { ShapeUtils, Vector2 } from 'three'
+import { flattenPath, toRegions, parseTransform, signedArea, type Vec2 } from './svg-path.ts'
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
+const SVG_DIR = join(ROOT, 'assets/svg')
+const PATTERN_DIR = join(ROOT, 'assets/pattern')
+const OUT_BIN = join(ROOT, 'public/glyphs')
+const OUT_TS = join(ROOT, 'src/generated')
+
+/** 1 文字あたりの粒子数。README の見積り（111 字 × 4,000 点 ≒ 45 万点）に合わせる */
+const PARTICLES_PER_GLYPH = 4000
+/** 円相は面積が大きいので多めに配る */
+const PARTICLES_FOR_CIRCLE = 20000
+
+interface Built {
+  key: string
+  positions: Float32Array
+  indices: Uint32Array
+  particles: Float32Array
+}
+
+function readSvg(path: string): { viewBox: [number, number, number, number]; paths: string[]; transform: string | null } {
+  const source = readFileSync(path, 'utf8')
+
+  const viewBoxAttr = /viewBox="([^"]+)"/.exec(source)?.[1]
+  if (!viewBoxAttr) throw new Error(`${path}: viewBox が無い`)
+  const vb = viewBoxAttr.trim().split(/[\s,]+/).map(Number)
+  if (vb.length !== 4 || vb.some(Number.isNaN)) throw new Error(`${path}: viewBox が読めない`)
+
+  // <clipPath> 内の <rect> は形状ではないので拾わない。<path d="..."> のみを対象にする
+  const paths = [...source.matchAll(/<path\b[^>]*\bd="([^"]+)"/g)].map((m) => m[1]!)
+  if (paths.length === 0) throw new Error(`${path}: <path d> が無い`)
+
+  const transform = /<g\b[^>]*\btransform="([^"]+)"/.exec(source)?.[1] ?? null
+
+  return { viewBox: vb as [number, number, number, number], paths, transform }
+}
+
+/**
+ * ほぼ重なった点を落とす。
+ * potrace 出力（circle.svg）は近接点が非常に多く、そのまま earcut に渡すと
+ * 穴の橋渡しが破綻して巨大な偽の三角形が出る。正規化後の座標で判定する。
+ */
+const MERGE_EPS = 2e-4
+
+function simplify(points: Vec2[]): Vec2[] {
+  const merged: Vec2[] = []
+  for (const p of points) {
+    const last = merged[merged.length - 1]
+    if (last && Math.abs(last.x - p.x) < MERGE_EPS && Math.abs(last.y - p.y) < MERGE_EPS) continue
+    merged.push(p)
+  }
+  // 先頭と末尾も重なっていれば閉じているとみなして片方を落とす
+  while (merged.length > 1) {
+    const first = merged[0]!
+    const last = merged[merged.length - 1]!
+    if (Math.abs(first.x - last.x) < MERGE_EPS && Math.abs(first.y - last.y) < MERGE_EPS) merged.pop()
+    else break
+  }
+
+  return merged
+}
+
+/** 三角形の面積で重み付けして内部に一様分布する点を取る */
+function sampleTriangles(positions: Float32Array, indices: Uint32Array, count: number, seed: number): Float32Array {
+  const triangleCount = indices.length / 3
+  const cumulative = new Float64Array(triangleCount)
+  let total = 0
+  for (let t = 0; t < triangleCount; t++) {
+    const ia = indices[t * 3]! * 2
+    const ib = indices[t * 3 + 1]! * 2
+    const ic = indices[t * 3 + 2]! * 2
+    const area = Math.abs(
+      (positions[ib]! - positions[ia]!) * (positions[ic + 1]! - positions[ia + 1]!) -
+        (positions[ic]! - positions[ia]!) * (positions[ib + 1]! - positions[ia + 1]!),
+    ) / 2
+    total += area
+    cumulative[t] = total
+  }
+
+  // 決定的な擬似乱数（mulberry32）。ビルドの再現性を保つため Math.random は使わない
+  let state = seed >>> 0
+  const random = () => {
+    state = (state + 0x6d2b79f5) >>> 0
+    let z = state
+    z = Math.imul(z ^ (z >>> 15), z | 1)
+    z ^= z + Math.imul(z ^ (z >>> 7), z | 61)
+    return ((z ^ (z >>> 14)) >>> 0) / 4294967296
+  }
+
+  const out = new Float32Array(count * 2)
+  for (let i = 0; i < count; i++) {
+    // 二分探索で面積比に応じた三角形を選ぶ
+    const target = random() * total
+    let lo = 0
+    let hi = triangleCount - 1
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1
+      if (cumulative[mid]! < target) lo = mid + 1
+      else hi = mid
+    }
+    const ia = indices[lo * 3]! * 2
+    const ib = indices[lo * 3 + 1]! * 2
+    const ic = indices[lo * 3 + 2]! * 2
+
+    let u = random()
+    let v = random()
+    if (u + v > 1) {
+      u = 1 - u
+      v = 1 - v
+    }
+    const w = 1 - u - v
+    out[i * 2] = w * positions[ia]! + u * positions[ib]! + v * positions[ic]!
+    out[i * 2 + 1] = w * positions[ia + 1]! + u * positions[ib + 1]! + v * positions[ic + 1]!
+  }
+  return out
+}
+
+function build(key: string, file: string, particleCount: number, seed: number): Built {
+  const { viewBox, paths, transform } = readSvg(file)
+  const { tx, ty, sx, sy } = parseTransform(transform)
+
+  const [vx, vy, vw, vh] = viewBox
+  // 長辺を 1 に揃えてアスペクトを保つ。circle.svg は正確な正方形ではない
+  const scale = 1 / Math.max(vw, vh)
+
+  const toLocal = (p: Vec2): Vec2 => {
+    const x = p.x * sx + tx
+    const y = p.y * sy + ty
+    return {
+      // 中心原点へ寄せ、Y は SVG（下向き）から three（上向き）へ反転
+      x: (x - vx - vw / 2) * scale,
+      y: -(y - vy - vh / 2) * scale,
+    }
+  }
+
+  const contours = paths
+    .flatMap((d) => flattenPath(d))
+    .map((c) => simplify(c.map(toLocal)))
+    .filter((c) => c.length >= 3)
+  const regions = toRegions(contours)
+
+  const positions: number[] = []
+  const indices: number[] = []
+  for (const region of regions) {
+    // triangulateShape は輪郭が反時計回り・穴が時計回りであることを前提にする
+    const contour = signedArea(region.contour) < 0 ? [...region.contour].reverse() : region.contour
+    const holes = region.holes.map((h) => (signedArea(h) > 0 ? [...h].reverse() : h))
+
+    const base = positions.length / 2
+    const flat = [contour, ...holes].flat()
+    for (const p of flat) positions.push(p.x, p.y)
+
+    // triangulateShape は Vector2 のメソッド（equals）を使うため、素の {x,y} では渡せない
+    const toVec2 = (points: Vec2[]) => points.map((p) => new Vector2(p.x, p.y))
+    for (const tri of ShapeUtils.triangulateShape(toVec2(contour), holes.map(toVec2))) {
+      indices.push(base + tri[0]!, base + tri[1]!, base + tri[2]!)
+    }
+  }
+
+  if (indices.length === 0) throw new Error(`${file}: 三角形が 1 つも生成されなかった`)
+
+  const positionArray = new Float32Array(positions)
+  const indexArray = new Uint32Array(indices)
+  return {
+    key,
+    positions: positionArray,
+    indices: indexArray,
+    particles: sampleTriangles(positionArray, indexArray, particleCount, seed),
+  }
+}
+
+function main(): void {
+  const glyphFiles = readdirSync(SVG_DIR)
+    .filter((f) => f.endsWith('.svg'))
+    .sort()
+
+  const built: Built[] = []
+  const failures: string[] = []
+
+  glyphFiles.forEach((file, i) => {
+    const key = basename(file, '.svg')
+    try {
+      built.push(build(key, join(SVG_DIR, file), PARTICLES_PER_GLYPH, i + 1))
+    } catch (error) {
+      failures.push(`${file}: ${(error as Error).message}`)
+    }
+  })
+
+  try {
+    built.push(build('@circle', join(PATTERN_DIR, 'circle.svg'), PARTICLES_FOR_CIRCLE, 9001))
+  } catch (error) {
+    failures.push(`circle.svg: ${(error as Error).message}`)
+  }
+
+  if (failures.length > 0) {
+    console.error('グリフのビルドに失敗:')
+    for (const f of failures) console.error(`  - ${f}`)
+    process.exit(1)
+  }
+
+  // --- バイナリへ連結 ---
+  const meshBytes = built.reduce((n, g) => n + g.positions.byteLength + g.indices.byteLength, 0)
+  const particleBytes = built.reduce((n, g) => n + g.particles.byteLength, 0)
+  const mesh = Buffer.alloc(meshBytes)
+  const particles = Buffer.alloc(particleBytes)
+
+  let meshOffset = 0
+  let particleOffset = 0
+  const index: Record<string, unknown> = {}
+
+  for (const g of built) {
+    const positionOffset = meshOffset
+    Buffer.from(g.positions.buffer, g.positions.byteOffset, g.positions.byteLength).copy(mesh, meshOffset)
+    meshOffset += g.positions.byteLength
+    const indexOffset = meshOffset
+    Buffer.from(g.indices.buffer, g.indices.byteOffset, g.indices.byteLength).copy(mesh, meshOffset)
+    meshOffset += g.indices.byteLength
+
+    Buffer.from(g.particles.buffer, g.particles.byteOffset, g.particles.byteLength).copy(particles, particleOffset)
+
+    index[g.key] = {
+      positionOffset,
+      vertexCount: g.positions.length / 2,
+      indexOffset,
+      indexCount: g.indices.length,
+      particleOffset,
+      particleCount: g.particles.length / 2,
+    }
+    particleOffset += g.particles.byteLength
+  }
+
+  mkdirSync(OUT_BIN, { recursive: true })
+  mkdirSync(OUT_TS, { recursive: true })
+  writeFileSync(join(OUT_BIN, 'mesh.bin'), mesh)
+  writeFileSync(join(OUT_BIN, 'particles.bin'), particles)
+  writeFileSync(
+    join(OUT_TS, 'glyphs.json'),
+    JSON.stringify({ particlesPerGlyph: PARTICLES_PER_GLYPH, glyphs: index }, null, 2) + '\n',
+  )
+
+  const totalParticles = built.reduce((n, g) => n + g.particles.length / 2, 0)
+  console.log(
+    `glyphs: ${built.length} 件 / mesh ${(meshBytes / 1e6).toFixed(2)}MB / ` +
+      `particles ${(particleBytes / 1e6).toFixed(2)}MB (${totalParticles.toLocaleString()} 点)`,
+  )
+}
+
+main()
