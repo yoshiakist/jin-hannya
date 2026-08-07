@@ -127,12 +127,13 @@ body {
   transform: translateX(calc(100% + var(--node-pan-px)));
   max-width: max(0px, calc(var(--headline-right) - var(--reading-gap)));
   writing-mode: vertical-rl;
-  font-size: clamp(15px, 1.6vh, 19px);
+  font-size: clamp(16px, 1.8vh, 20px);
   letter-spacing: 0.5em;
   color: var(--text-dim);
   line-height: 2.2;
   max-height: 76vh;
   overflow: hidden;
+  font-weight: 600;
 }
 
 .overlay__reading p {
