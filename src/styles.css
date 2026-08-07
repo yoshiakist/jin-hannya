@@ -87,7 +87,7 @@ body {
   --summary-width: 0px;
 
   /* 大書との間合い。読み・サマリー・本文の x はこの 3 つだけで動かせる */
-  --reading-gap: clamp(30px, 2.5vw, 50px);
+  --reading-gap: clamp(15px, 1.6vw, 32px);
   --summary-gap: clamp(26px, 3.4vw, 64px);
   --doc-gap: clamp(28px, 3.6vw, 68px);
 
@@ -130,7 +130,7 @@ body {
   font-size: clamp(16px, 1.8vh, 20px);
   letter-spacing: 0.5em;
   color: var(--text-dim);
-  line-height: 2.2;
+  line-height: 1.8;
   max-height: 76vh;
   overflow: hidden;
   font-weight: 600;
