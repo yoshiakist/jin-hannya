@@ -99,6 +99,62 @@ export function nodeOpacityValue(): number {
   return nodeOpacity.value as number
 }
 
+/* ---- 初出の滲み出し -------------------------------------------------------
+ * 起動して紙面が出るときだけ、経文が頭の字から末尾の字へ順に滲み出す。
+ * 紙面ぜんたいが一斉に点くと刷り上がった版面が差し出されただけに見えるので、
+ * 「いま書かれている」側へ寄せる。**戻ってきたときは繰り返さない**（初出は 1 度きり）。
+ *
+ * 時計は紙面で 1 本（`revealTime`、秒）。字ごとの遅れはインスタンス属性 `aDelay` で持ち、
+ * シェーダは字によらず同じまま（→ 紙面の墨は 1 本のマテリアルを共有する規約）。
+ */
+
+/** 頭の字と末尾の字の出はじめの差（秒） */
+export const REVEAL_SPREAD = 3
+/** 1 字が滲み切るまで（秒） */
+export const REVEAL_DURATION = 0.9
+/** 出し終わりまで（秒）。`revealTime` はここで止める */
+export const REVEAL_TOTAL = REVEAL_SPREAD + REVEAL_DURATION
+
+/** 滲みの縁の幅（字面座標）。狭いと紙を切る刃、広いと墨ではなく霧になる */
+const REVEAL_EDGE = 0.34
+/** 縁の蛇行の幅。まっすぐな対角線で拭くと払拭の演出に見えるので、字ごとに崩す */
+const REVEAL_WOBBLE = 0.16
+/** 蛇行の粗さ（字面 1 辺あたりの波数） */
+const REVEAL_WOBBLE_FREQ = 3.4
+
+/**
+ * 初出の時計。**初期値は 0＝まだ 1 字も書かれていない。**
+ *
+ * ここを「出し終わり」から始めて、マウント後の `useEffect` で 0 へ落とすと、
+ * その 1 フレームぶん全文が見えてしまう（グリフは読み込み済みなので、
+ * 紙面は最初のフレームから完全な濃さで描ける）。**透明から始めて進める**のが順で、
+ * 逆はできない。進めるのは `Paper` の `useFrame` だけで、`REVEAL_TOTAL` で止まる。
+ */
+export const revealTime = uniform(0)
+
+/** その字がどこまで現れたか（0〜1）。`delay` は字ごとの出はじめ（秒） */
+export function revealProgress(delay: Node<'float'>): Node<'float'> {
+  return clamp(revealTime.sub(delay).div(REVEAL_DURATION), 0, 1)
+}
+
+/**
+ * 字の中の滲み出し。筆で書くのと同じく**左上から右下へ**墨が回る。
+ * 字面ローカル座標の対角 (x - y + 1)/2 を進行方向に取り、縁をノイズで蛇行させる。
+ */
+export function revealMask(delay: Node<'float'>): Node<'float'> {
+  const p = revealProgress(delay)
+  // 左上 = 0、右下 = 1
+  const diagonal = positionGeometry.x.sub(positionGeometry.y).add(1).mul(0.5)
+  // 字ごとに違う崩れ方にする。種は出はじめ（＝全文での位置）から引く
+  const wobble = mx_noise_float(vec3(positionGeometry.xy.mul(REVEAL_WOBBLE_FREQ), delay))
+    .mul(0.5)
+    .add(0.5)
+    .mul(REVEAL_WOBBLE)
+  // 縁が字面を渡り切るまで進める（縁の幅と蛇行のぶんだけ余分に走らせる）
+  const front = p.mul(1 + REVEAL_EDGE + REVEAL_WOBBLE)
+  return clamp(front.sub(diagonal.add(wobble)).div(REVEAL_EDGE), 0, 1)
+}
+
 /* ---- 墨の質感 -------------------------------------------------------------
  * グリフの塗りを均一な白ではなく、濃淡とかすれのある墨に見せる。
  * テクスチャは持たず全て手続き的（README「ランタイムで SVG を触らない」に抵触しない）。

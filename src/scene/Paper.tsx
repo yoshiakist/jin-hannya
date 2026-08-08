@@ -29,6 +29,11 @@ import {
   approach,
   paperOpacity,
   transitionAlpha,
+  revealTime,
+  revealMask,
+  revealProgress,
+  REVEAL_SPREAD,
+  REVEAL_TOTAL,
 } from './materials.ts'
 import { CELL_X, CELL_Y, GLYPH_SIZE, gridPosition } from '../world/paper.ts'
 import { navAtom, acceptsInputAtom, visitedIndicesAtom } from '../nav/atoms.ts'
@@ -57,6 +62,18 @@ interface CharGroup {
  * （字ごとに進めると 1 フレームで 90 回寄ってしまう）。
  */
 const dim = uniform(0)
+
+/**
+ * 字ごとの出はじめ（秒）。頭の字が 0、末尾の字が `REVEAL_SPREAD`。
+ * 全文インデックスから引くので、格子の並びではなく**読む順**に滲み出す。
+ */
+function revealDelayOf(index: number): number {
+  const last = SUTRA_CHARS.length - 1
+  return last <= 0 ? 0 : (index / last) * REVEAL_SPREAD
+}
+
+/** 初出の滲み出しを済ませたか。紙面は畳まないので、モジュールに 1 つ置けば足りる */
+let introPlayed = false
 
 /**
  * 紙面ぜんぶで共有する墨のマテリアル。
@@ -91,6 +108,8 @@ function paperInk(): MeshBasicNodeMaterial {
   material.opacityNode = mix(mix(0.94, 0.55, dim), 1, focused)
     .mul(inkAlpha(density))
     .mul(transitionAlpha(attribute<'float'>('aPersist', 'float'), paperOpacity))
+    // 初出だけ、字の中を左上から右下へ墨が回る。2 度目以降は 1 のまま素通りする
+    .mul(revealMask(attribute<'float'>('aDelay', 'float')))
   sharedInk = material
   return material
 }
@@ -108,8 +127,20 @@ export function Paper({ live = true }: { live?: boolean }) {
   /** 読破した語に属する字（0/1）。中身が変わるのは L1 以降から戻ってきたときだけ */
   const visitedTargets = useAtomValue(visitedIndicesAtom)
 
+  // 初出の滲み出しは起動して紙面が出るときの 1 度きり。
+  // 時計は 0（＝透明）から始まっているので、ここですることは「2 度目なら出し終わりへ飛ばす」だけ。
+  // 紙面は畳まないので普段ここは通らないが、組み直したときに書き直しから始めないための備え
+  useEffect(() => {
+    if (introPlayed) revealTime.value = REVEAL_TOTAL
+    introPlayed = true
+  }, [])
+
   // 沈み込みは紙面で 1 つ。hover の変化そのものは行き先だけを書き、寄せるのはここ
   useFrame((_, delta) => {
+    // 初出の時計だけは伏せていても進める（潜ったまま止めると、戻ったとき途中から書き始める）
+    if ((revealTime.value as number) < REVEAL_TOTAL) {
+      revealTime.value = Math.min(REVEAL_TOTAL, (revealTime.value as number) + delta)
+    }
     if (!live) return
     dim.value = approach(dim.value, hoveredId ? 1 : 0, delta)
   })
@@ -214,19 +245,31 @@ function SdfGlow({
     return new InstancedBufferAttribute(array, 1)
   }, [count])
 
+  /** 初出の出はじめ（秒）。滲みは字より遅れずに点くよう、墨と同じ遅れを読む */
+  const delay = useMemo(() => {
+    const array = new Float32Array(count)
+    for (let i = 0; i < count; i++) array[i] = revealDelayOf(i)
+    return new InstancedBufferAttribute(array, 1)
+  }, [count])
+
   const geometry = useMemo(() => {
     const plane = new PlaneGeometry(1, 1)
     plane.setAttribute('aFocus', focus)
     plane.setAttribute('aCell', cell)
+    plane.setAttribute('aDelay', delay)
     return plane
-  }, [focus, cell])
+  }, [focus, cell, delay])
   useEffect(() => () => geometry.dispose(), [geometry])
 
   const material = useMemo(
     () =>
       createGlowMaterial(
         attribute<'float'>('aCell', 'float'),
-        attribute<'float'>('aFocus', 'float').mul(strength),
+        attribute<'float'>('aFocus', 'float')
+          .mul(strength)
+          // まだ書かれていない字は光らない（読破の青白が墨より先に点くのを防ぐ）。
+          // 滲みは板いっぱいに出るので、字の中を回る拭き方（revealMask）ではなく進み具合だけを掛ける
+          .mul(revealProgress(attribute<'float'>('aDelay', 'float'))),
         { color, layer: paperOpacity },
       ),
     [color, strength],
@@ -373,6 +416,15 @@ function CharInstances({
     return new InstancedBufferAttribute(array, 1)
   }, [group.indices])
 
+  /** 初出の出はじめ（秒）。同じ字が何度出てもそれぞれの位置の順に滲む */
+  const delay = useMemo(() => {
+    const array = new Float32Array(group.indices.length)
+    group.indices.forEach((index, i) => {
+      array[i] = revealDelayOf(index)
+    })
+    return new InstancedBufferAttribute(array, 1)
+  }, [group.indices])
+
   const geometry = useMemo(() => {
     const base = glyphGeometry(group.char)
     if (!base) return null
@@ -381,8 +433,9 @@ function CharInstances({
     base.setAttribute('aSeed', seed)
     base.setAttribute('aPersist', persist)
     base.setAttribute('aVisited', visited)
+    base.setAttribute('aDelay', delay)
     return base
-  }, [group.char, focus, seed, persist, visited])
+  }, [group.char, focus, seed, persist, visited, delay])
 
   // シェーダは紙面で 1 本を共有する（字ごとに組み直さない）
   const material = paperInk()
