@@ -1,0 +1,9 @@
+id: maka-to-shingyo
+kind: phrase
+label: 摩訶般若波羅蜜多心経
+reading: まか はんにゃはらみた しんぎょう
+summary: この経の題。はかりしれないほど大きな智慧の、いちばん芯だけを取り出した経。
+parent: shingyo
+children: [maka, hannya-haramita, shingyo-hrdaya]
+layout: none
+range: [0, 10]

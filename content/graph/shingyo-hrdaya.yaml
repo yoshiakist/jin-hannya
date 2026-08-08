@@ -1,0 +1,11 @@
+id: shingyo-hrdaya
+kind: term
+label: 心経
+reading: しんぎょう
+sanskrit:
+  text: hṛdaya-sūtra
+  kana: フリダヤ・スートラ
+summary: 心臓にあたる部分だけを説く経。大部の教えから芯を抜き出した、という宣言。
+parent: maka-to-shingyo
+layout: none
+range: [8, 10]

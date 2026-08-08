@@ -1,0 +1,11 @@
+id: hannya-haramita
+kind: term
+label: 般若波羅蜜多
+reading: はんにゃはらみた
+sanskrit:
+  text: prajñā-pāramitā
+  kana: プラジュニャー・パーラミター
+summary: ものごとをありのままに見抜く智慧と、その智慧を渡りきるところまで究めること。
+parent: maka-to-shingyo
+layout: none
+range: [2, 8]

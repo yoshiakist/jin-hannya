@@ -1,0 +1,11 @@
+id: maka
+kind: term
+label: 摩訶
+reading: まか
+sanskrit:
+  text: mahā
+  kana: マハー
+summary: 大きい、という称え。寸法の大小ではなく、比べるものが無いことを言う。
+parent: maka-to-shingyo
+layout: none
+range: [0, 2]
