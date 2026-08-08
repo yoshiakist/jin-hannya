@@ -57,6 +57,7 @@
 | `column` の hover グロー | 文字 + 枠を光らせる分岐は書いてあるが、hover 状態のスクリーンショットを撮れていない |
 | hover のフェードと滲み | `FOCUS_FADE` / `GLOW_NEAR` / `GLOW_FAR` / `GLOW_STRENGTH` / `GLOW_OPACITY` は画面で見て詰める前提の初期値 |
 | 読み上げ | 音源が未収録のため経路を通していない |
+| `circle` の引き出し線 | 大書の縦中心から円相の右端へ、段差を挟んで水平に入る折れ線（`connectorPath`）。段差の位置（`CONNECTOR_BEND_*`）と濃さは画面で見て詰める前提の初期値 |
 
 ## 未着手・残作業
 

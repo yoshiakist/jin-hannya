@@ -32,6 +32,8 @@ import { carriedNodeId } from './carry.ts'
 import { swayAt, swayPhase } from './sway.ts'
 import {
   CIRCLE_DIAMETER,
+  connectorDotRadius,
+  connectorPath,
   diagramCenterX,
   columnMetrics,
   childCharOffset,
@@ -47,6 +49,11 @@ import { labelText, type GraphNode } from '../content/schema.ts'
 /** 滲みの最大の濃さ。広がりは距離場が決めるので、ここで持つのは強さだけ */
 const GLOW_OPACITY = 0.5
 
+/** 引き出し線の濃さ。円相（0.55）よりわずかに落とし、地の装置として控えさせる */
+const CONNECTOR_OPACITY = 0.45
+/** 付け根の点の濃さ。線より濃く、字よりは控えめに */
+const CONNECTOR_DOT_OPACITY = 0.7
+
 export function NodeStage() {
   const node = useAtomValue(currentNodeAtom)
   const children = useAtomValue(childNodesAtom)
@@ -54,6 +61,7 @@ export function NodeStage() {
   return (
     <group>
       <Headline node={node} />
+      {node.layout === 'circle' && <Connector node={node} />}
       {node.layout === 'circle' && <CircleLayout node={node} items={diagramItems(node, children)} />}
       {node.layout === 'column' && <ColumnLayout node={node} items={diagramItems(node, children)} />}
     </group>
@@ -143,6 +151,56 @@ function HeadlineGate({
           <meshBasicMaterial transparent opacity={0} depthWrite={false} />
         </mesh>
       ))}
+    </group>
+  )
+}
+
+/**
+ * 大書から図への引き出し線。大書の左端から水平に出て、段差を降り、円相の右端へ入る（img_03）。
+ * 親子関係を目で辿らせる装置なので、線そのものは揺らさない（図と大書のあいだに固定して掛ける）。
+ *
+ * 枠線と同じく `THREE.Line` を自前で組む（`<line>` は JSX の SVG と衝突し、
+ * WebGPURenderer はノードマテリアルなしの線を素直に描くため）。
+ */
+function Connector({ node }: { node: GraphNode }) {
+  const path = useMemo(() => connectorPath(node), [node])
+
+  const line = useMemo(() => {
+    if (!path) return null
+    const points = path.map(([x, y]) => new Vector3(x, y, -0.3))
+    return new Line(
+      new BufferGeometry().setFromPoints(points),
+      new LineBasicMaterial({ transparent: true, opacity: CONNECTOR_OPACITY, toneMapped: false, color: STROKE }),
+    )
+  }, [path])
+
+  // 付け根の点。線より濃く打って、大書から線が出ているのだと分かるようにする。
+  // こちらはメッシュなのでノードマテリアルが持てる（濃さは nodeOpacity 任せ）
+  const dot = useMemo(() => createStrokeMaterial(CONNECTOR_DOT_OPACITY), [])
+  useEffect(() => () => dot.dispose(), [dot])
+
+  useEffect(
+    () => () => {
+      line?.geometry.dispose()
+      ;(line?.material as LineBasicMaterial | undefined)?.dispose()
+    },
+    [line],
+  )
+
+  // 線は Line なのでノードマテリアルを持てない。遷移の濃さを CPU 側から掛ける（枠線と同じ）
+  useFrame(() => {
+    if (!line) return
+    ;(line.material as LineBasicMaterial).opacity = CONNECTOR_OPACITY * nodeOpacityValue()
+  })
+
+  if (!line || !path) return null
+  const [startX, startY] = path[0]!
+  return (
+    <group>
+      <primitive object={line} />
+      <mesh position={[startX, startY, -0.3]} material={dot}>
+        <circleGeometry args={[connectorDotRadius(), 16]} />
+      </mesh>
     </group>
   )
 }

@@ -170,11 +170,11 @@ body {
 .overlay__summary {
   position: absolute;
   /* 天は大きく空け、下寄りに組む */
-  top: 30vh;
+  top: 35vh;
   right: var(--summary-right);
   transform: translateX(var(--node-pan-px));
   writing-mode: vertical-rl;
-  max-height: 58vh;
+  max-height: 53vh;
   font-size: clamp(18px, 2.25vh, 23px);
   line-height: 2.1;
   letter-spacing: 0.12em;

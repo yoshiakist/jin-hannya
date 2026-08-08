@@ -94,6 +94,12 @@ function headlineEdges(node: GraphNode): { left: number; right: number } {
   return { left: leftmost - size / 2, right: HEADLINE_X + size / 2 }
 }
 
+/** 大書の書き出しの高さ（字面の上端。ワールド単位） */
+function headlineTopY(node: GraphNode): number {
+  const { positions, size } = headlineLayout(node)
+  return Math.max(...positions.map(([, y]) => y)) + size / 2
+}
+
 /**
  * L1 以降のカメラ x（＝パン）。
  *
@@ -135,6 +141,66 @@ const CIRCLE_SHIFT_PX = 60
 export function diagramCenterX(node: GraphNode): number {
   if (node.layout === 'circle') return DIAGRAM_X - CIRCLE_SHIFT_PX * unitsPerPixel(1)
   return DIAGRAM_X
+}
+
+/* ---- 大書から図への引き出し線 ---------------------------------------------
+ * 大書の左端から水平に出て、段差をなだらかに降り、円相の縁へ水平に入る（img_03）。
+ *
+ * 付け根は**大書の書き出しのすぐ下**に取る。大書の縦中心から出すと、
+ * 大書の左に置くサマリー（DOM）の真上を横切って読めなくなる。
+ */
+
+/** 大書の左端と線の付け根のあいだに空ける間（px）。字にくっつけない */
+const CONNECTOR_GAP_PX = 14
+/** 付け根を大書の書き出しから下げる量（px）。サマリーの頭より上に抜けるだけ下げる */
+const CONNECTOR_TOP_DROP_PX = 80
+/** 円相へ入る角度。右上 45 度の縁に取り付く */
+const CONNECTOR_ENTRY_ANGLE = Math.PI / 4
+/** 段差を作る区間。線の全長を 1 として、右（大書側）から測った位置 */
+const CONNECTOR_BEND_START = 0.55
+const CONNECTOR_BEND_END = 0.18
+/** 段差の分割数。折れ線で S 字を近似する */
+const CONNECTOR_SEGMENTS = 30
+/** 付け根に打つ点の半径（px）。線と同じく画面座標で見た大きさを保つ */
+const CONNECTOR_DOT_PX = 4
+
+/** 引き出し線の付け根に打つ点の半径（ワールド単位） */
+export function connectorDotRadius(): number {
+  return CONNECTOR_DOT_PX * unitsPerPixel(1)
+}
+
+/**
+ * 引き出し線の折れ線（ワールド座標）。図を持たないノードでは null。
+ *
+ * 円相と大書の高さがたまたま揃った場合はそのまま水平線になる（段差の補間が効かないだけ）。
+ */
+export function connectorPath(node: GraphNode): [number, number][] | null {
+  if (node.layout !== 'circle') return null
+
+  const startX = headlineEdges(node).left - CONNECTOR_GAP_PX * unitsPerPixel(1)
+  const startY = headlineTopY(node) - CONNECTOR_TOP_DROP_PX * unitsPerPixel(1)
+  // 円相の右上 45 度の縁。図の中心は左へ寄せてあるので `diagramCenterX` から引く
+  const radius = CIRCLE_DIAMETER / 2
+  const endX = diagramCenterX(node) + Math.cos(CONNECTOR_ENTRY_ANGLE) * radius
+  const endY = Math.sin(CONNECTOR_ENTRY_ANGLE) * radius
+  if (startX <= endX) return null
+
+  const span = startX - endX
+  // 右端から測った比 f（1 = 大書側、0 = 円相側）で高さを決める
+  const yAt = (f: number) => {
+    const t = (f - CONNECTOR_BEND_END) / (CONNECTOR_BEND_START - CONNECTOR_BEND_END)
+    const clamped = Math.min(1, Math.max(0, t))
+    // smoothstep。折れ角を作らず、水平の直線から直線へ滑らかに渡す
+    return endY + (startY - endY) * clamped * clamped * (3 - 2 * clamped)
+  }
+
+  const points: [number, number][] = [[startX, startY]]
+  for (let s = 0; s <= CONNECTOR_SEGMENTS; s++) {
+    const f = CONNECTOR_BEND_START + (CONNECTOR_BEND_END - CONNECTOR_BEND_START) * (s / CONNECTOR_SEGMENTS)
+    points.push([endX + span * f, yAt(f)])
+  }
+  points.push([endX, endY])
+  return points
 }
 
 /**
