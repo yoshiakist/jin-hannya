@@ -8,7 +8,7 @@
 
 import { VIEW_HEIGHT } from './paper.ts'
 import { halfWidthFor, unitsPerPixel } from './pan.ts'
-import { labelText, type GraphNode } from '../content/schema.ts'
+import { labelText, splitColumns, type GraphNode } from '../content/schema.ts'
 
 /** 大書の 1 文字あたりの高さ。画面高の 60〜85% を大書が占める（モック分析より） */
 const HEADLINE_SIZE = VIEW_HEIGHT * 0.30
@@ -42,11 +42,11 @@ export interface HeadlineLayout {
 
 /**
  * 大書の列の切り方。
- * label の空白・改行を列の切れ目として読むので、どこで折るかはコンテンツ側が決められる。
+ * label の `/` を列の切れ目として読むので、どこで折るかはコンテンツ側が決められる。
  * 区切りを持たない label だけ字数から自動で折り返す。
  */
 function headlineColumns(label: string): string[][] {
-  const parts = label.split(/\s+/u).filter((part) => part.length > 0)
+  const parts = splitColumns(label).map(labelText).filter((part) => part.length > 0)
   if (parts.length > 1) return parts.map((part) => Array.from(part))
 
   const chars = Array.from(parts[0] ?? '')

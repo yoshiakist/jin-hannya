@@ -40,14 +40,34 @@ export type Sanskrit = z.infer<typeof Sanskrit>
 /** スラッグ。ローマ字小文字とハイフンのみ */
 const Slug = z.string().regex(/^[a-z][a-z0-9-]*$/, 'id はローマ字小文字とハイフンのみ')
 
+/** 列の切れ目。`label` と `reading` で共通 */
+export const COLUMN_BREAK = '/'
+
+/**
+ * `label` / `reading` を列に割る。切れ目は `/` だけで、空白は列の中身として残す
+ * （読みの中の半角・全角スペースを意図どおり出すため）。
+ * `/` の前後の半角空白・改行だけは YAML の書きやすさのために落とす。
+ */
+export function splitColumns(value: string): string[] {
+  return value
+    .split(COLUMN_BREAK)
+    .map((column) => column.replace(/^[ \t\r\n]+|[ \t\r\n]+$/gu, ''))
+    .filter((column) => column.length > 0)
+}
+
 export const GraphNode = z.object({
   id: Slug,
   kind: NodeKind,
   /**
    * 大書に使う文字列。構成文字はすべて assets/svg/ に存在すること。
-   * 空白・改行は**列の切れ目**として読む（`headlineLayout`）。字そのものは `labelText()` で取り出す。
+   * `/` が**列の切れ目**（`headlineLayout`）。字そのものは `labelText()` で取り出す。
    */
-  label: z.string().min(1),
+  label: z
+    .string()
+    .min(1)
+    .refine((value) => splitColumns(value).every((column) => !/\s/u.test(column)), {
+      message: '大書の列の中に空白は置けない。列の切れ目は / で示す',
+    }),
   reading: z.string().min(1),
   sanskrit: Sanskrit.optional(),
   /** 右中段の短い定義（数十字） */
@@ -65,11 +85,11 @@ export const GraphNode = z.object({
 export type GraphNode = z.infer<typeof GraphNode>
 
 /**
- * label から列の切れ目（空白・改行）を除いた字だけの並び。
+ * label から列の切れ目（`/`）と空白を除いた字だけの並び。
  * range との突き合わせ、図の中の子の組版、グリフ在庫の検査はこちらを見る。
  */
 export function labelText(label: string): string {
-  return label.replace(/\s+/gu, '')
+  return label.replace(/[/\s]+/gu, '')
 }
 
 /** `content/docs/*.md` の frontmatter */

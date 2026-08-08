@@ -24,7 +24,7 @@ import {
 import { overlayInsets, DOC_EDGE_PX } from '../world/node-layout.ts'
 import { nodePanXAtom, nodePanRangeAtom, settleNodePanAtom, unitsPerPixel } from '../world/pan.ts'
 import { VIEW_HEIGHT } from '../world/paper.ts'
-import { labelText, type GraphNode } from '../content/schema.ts'
+import { labelText, splitColumns, type GraphNode } from '../content/schema.ts'
 import { parseRuby } from '../content/ruby.ts'
 import { parseBlocks, startsWithBracket } from '../content/blocks.ts'
 import { APPEAR_DELAY_MS, RETURN_APPEAR_DELAY_MS, TRANSITION_MS } from '../scene/Transition.tsx'
@@ -106,16 +106,14 @@ export function Overlay() {
             exit={{ opacity: 0, transition: { duration: 0.45, delay: 0 } }}
             transition={{ duration: 0.45, delay: appearDelay }}
           >
-            {/* 読みの空白は列の切れ目。大書の label と同じ約束で、どこで折るかは
-                コンテンツ側（`content/graph/*.yaml` の reading）が決める */}
-            {node.reading
-              .split(/\s+/u)
-              .filter((part) => part.length > 0)
-              .map((part, i) => (
-                <p key={i} className="reading">
-                  {part}
-                </p>
-              ))}
+            {/* 読みの列の切れ目は `/`。大書の label と同じ約束で、どこで折るかは
+                コンテンツ側（`content/graph/*.yaml` の reading）が決める。
+                列の中の空白はそのまま出す */}
+            {splitColumns(node.reading).map((part, i) => (
+              <p key={i} className="reading">
+                {part}
+              </p>
+            ))}
             {node.sanskrit && (
               <p className="sanskrit">
                 <span className="sanskrit__kana">{node.sanskrit.kana}</span>

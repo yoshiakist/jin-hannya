@@ -99,7 +99,7 @@ clone 直後は `npm run content:build` を先に走らせる（`src/generated/`
 
 | skill | 扱う範囲 |
 |---|---|
-| [`sutra-content`](.claude/skills/sutra-content/SKILL.md) | コンテンツモデル。`sutra.txt` の `range`、YAML グラフ、`id` 命名規約、`label`/`reading` の空白、ビルド時検証 |
+| [`sutra-content`](.claude/skills/sutra-content/SKILL.md) | コンテンツモデル。`sutra.txt` の `range`、YAML グラフ、`id` 命名規約、`label`/`reading` の列の切れ目、ビルド時検証 |
 | [`paper-grid`](.claude/skills/paper-grid/SKILL.md) | L0 の紙面。格子の組み方、`index → (column, row)`、意味の区切りを見せない方針、hover で範囲だけが光る表現 |
 | [`node-screen`](.claude/skills/node-screen/SKILL.md) | L1 以降の画面文法。モック分析、3 種の `layout`、`node-layout.ts` の単独責務、`overlayInsets` |
 | [`transition-fx`](.claude/skills/transition-fx/SKILL.md) | 遷移演出。持ち越される字、散開と凝集、尺とカーブ、面の用意をやり直さない理由 |

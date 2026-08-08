@@ -152,7 +152,7 @@ for (const node of nodes.values()) {
     } else if (node.kind !== 'sutra') {
       // 根は range: [0, 全文長] を持つが、label は大書用の短い題名であって全文ではない
       const actual = sutra.slice(start, end).join('')
-      // label の空白・改行は大書の列の切れ目。突き合わせは字だけで見る
+      // label の `/` は大書の列の切れ目。突き合わせは字だけで見る
       if (actual !== labelText(node.label)) {
         fail(`${at}: range [${start}, ${end}) は "${actual}" を指すが label は "${node.label}"`)
       }
