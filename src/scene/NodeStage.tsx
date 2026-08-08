@@ -32,7 +32,7 @@ import { carriedNodeId } from './carry.ts'
 import { swayAt, swayPhase } from './sway.ts'
 import {
   CIRCLE_DIAMETER,
-  DIAGRAM_X,
+  diagramCenterX,
   columnMetrics,
   childCharOffset,
   diagramItems,
@@ -54,8 +54,8 @@ export function NodeStage() {
   return (
     <group>
       <Headline node={node} />
-      {node.layout === 'circle' && <CircleLayout items={diagramItems(node, children)} />}
-      {node.layout === 'column' && <ColumnLayout items={diagramItems(node, children)} />}
+      {node.layout === 'circle' && <CircleLayout node={node} items={diagramItems(node, children)} />}
+      {node.layout === 'column' && <ColumnLayout node={node} items={diagramItems(node, children)} />}
     </group>
   )
 }
@@ -151,11 +151,11 @@ function HeadlineGate({
  * 円相レイアウト。
  * 外周は assets/pattern/circle.svg（手続き的生成はしない）。子は円周上へ均等配置し、中心は空ける。
  */
-function CircleLayout({ items }: { items: DiagramItem[] }) {
+function CircleLayout({ node, items }: { node: GraphNode; items: DiagramItem[] }) {
   const diameter = CIRCLE_DIAMETER
 
   return (
-    <group position={[DIAGRAM_X, 0, 0]}>
+    <group position={[diagramCenterX(node), 0, 0]}>
       <Glyph
         char={CIRCLE_KEY}
         position={[0, 0, -0.2]}
@@ -177,7 +177,7 @@ function CircleLayout({ items }: { items: DiagramItem[] }) {
  * 角丸矩形を縦に等間隔で並べ、中央を通る 1 本の細い縦線で連結する。
  * hover では文字と枠の両方が琥珀に光る（img_03 の文字のみの発光との違い）。
  */
-function ColumnLayout({ items }: { items: DiagramItem[] }) {
+function ColumnLayout({ node, items }: { node: GraphNode; items: DiagramItem[] }) {
   // 連結線も字と同じ濃さで出入りさせる（nodeOpacity を通すためノードマテリアルで持つ）
   const link = useMemo(() => createStrokeMaterial(0.55), [])
   useEffect(() => () => link.dispose(), [link])
@@ -186,7 +186,7 @@ function ColumnLayout({ items }: { items: DiagramItem[] }) {
   const gap = Math.max(0, pitch - size * 1.9)
 
   return (
-      <group position={[DIAGRAM_X, 0, 0]}>
+      <group position={[diagramCenterX(node), 0, 0]}>
         {items.slice(0, -1).map((item) => (
           <mesh
             key={`link-${item.node.id}`}

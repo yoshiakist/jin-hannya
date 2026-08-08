@@ -118,6 +118,19 @@ export interface DiagramItem {
 export const CIRCLE_DIAMETER = VIEW_HEIGHT * 0.58
 
 /**
+ * 円相だけ図の中心を左へ寄せる量（px）。
+ * 外周が幅を持つぶん、`DIAGRAM_X` のままだと右のサマリーに輪が被る。
+ * px で持つのは `HEADLINE_MARGIN_PX` と同じ理由で、被りは画面座標で起きるため。
+ */
+const CIRCLE_SHIFT_PX = 60
+
+/** 図の中心 x。`layout` ごとの寄せを含む。描画・遷移・オーバーレイが同じ値を読む */
+export function diagramCenterX(node: GraphNode): number {
+  if (node.layout === 'circle') return DIAGRAM_X - CIRCLE_SHIFT_PX * unitsPerPixel(1)
+  return DIAGRAM_X
+}
+
+/**
  * 子の図の配置。
  *
  * 遷移で「子の字がそのまま次の見出しへ移る」ためには、Transition が描画とまったく同じ
@@ -177,14 +190,14 @@ export function childCharOffset(index: number, count: number, size: number, fram
 
 /** 図が占める左端（ワールド単位）。図を持たないノードは null */
 function diagramLeftEdge(node: GraphNode, children: GraphNode[]): number | null {
-  if (node.layout === 'circle') return DIAGRAM_X - CIRCLE_DIAMETER / 2
+  if (node.layout === 'circle') return diagramCenterX(node) - CIRCLE_DIAMETER / 2
   if (node.layout === 'column') {
     const items = diagramItems(node, children)
     const widest = Math.max(
       0,
       ...items.map((item) => frameSize(Array.from(labelText(item.node.label)).length, item.size).width),
     )
-    return DIAGRAM_X - widest / 2
+    return diagramCenterX(node) - widest / 2
   }
   return null
 }

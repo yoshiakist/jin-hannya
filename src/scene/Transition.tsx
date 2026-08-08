@@ -22,7 +22,7 @@ import {
   headlineLayout,
   diagramItems,
   childCharOffset,
-  DIAGRAM_X,
+  diagramCenterX,
 } from '../world/node-layout.ts'
 import { navAtom, tierAtom } from '../nav/atoms.ts'
 import { nodeById, root, childrenOf, headlineChildOwners, SUTRA_INDEX_TO_NODE } from '../content/loader.ts'
@@ -113,7 +113,7 @@ function visibleGlyphs(node: GraphNode): StageGlyph[] {
       const [dx, dy] = childCharOffset(k, label.length, item.size, item.frame)
       return {
         char,
-        position: [DIAGRAM_X + item.position[0] + dx, item.position[1] + dy] as [number, number],
+        position: [diagramCenterX(node) + item.position[0] + dx, item.position[1] + dy] as [number, number],
         size: item.size,
         owner: item.node.id,
         enters: null,
