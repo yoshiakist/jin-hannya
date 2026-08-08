@@ -43,6 +43,14 @@ export const TRANSITION_MS = 1700
  */
 export const APPEAR_DELAY_MS = 500
 
+/**
+ * 戻るときに、字とオーバーレイが現れ始めるまでの間（ミリ秒）。
+ * 戻りは「光が凝集する → 字が現れる → 残った光が引く」の順。凝集は演出の終わり（τ=1）で
+ * 形に収まりきっているので、待たずにそのまま字へ渡す。ここに間を空けると、
+ * 光が消えきってから字が出てくる（＝一度なにも無い画面を挟む）ことになる。
+ */
+export const RETURN_APPEAR_DELAY_MS = 0
+
 /** 画面上の字 1 つ。粒子の出所にも、持ち越しの出発点・行き先にもなる */
 interface StageGlyph extends ParticleSource {
   /** この字が属するノード id。紙面の句の範囲外は null */
@@ -202,15 +210,23 @@ function enterFade(t: number): number {
  *   消える … 2 乗のカーブ（`glyphFade`）で素早く引く。あとに残るのは粒子だけになる
  *   現れる … 行き先が L0 なら、紙面は演出のあいだに `enterFade` で立ち上がる。
  *            粒子の凝集と同じ時間で濃くなるので、光が集まってそのまま字になる。
- *            行き先が L1 以降なら、面が差し替わってから `APPEAR_DELAY_MS` 待って出す
- *            （持ち越しの字が着地したのを見せきってから、周りが追って現れる）
+ *            行き先が L1 以降なら、面が差し替わってから出す。潜るときは `APPEAR_DELAY_MS`
+ *            だけ待って（持ち越しの字が着地したのを見せきってから、周りが追って現れる）、
+ *            戻るときは待たない（`RETURN_APPEAR_DELAY_MS`。凝集しきった光をそのまま字へ渡す）
  *
  * 持ち越される字だけはこの出入りに乗らない（`carryOpacity`）。遷移のあいだは Transition が
  * 動かしながら描くので伏せ、差し替わった瞬間に不透明のまま引き継ぐ。
  */
 export function StageFade() {
   const nav = useAtomValue(navAtom)
-  const step = useRef<{ kind: 'out' | 'in'; at: number; fromRoot: boolean; toRoot: boolean } | null>(null)
+  const step = useRef<{
+    kind: 'out' | 'in'
+    at: number
+    fromRoot: boolean
+    toRoot: boolean
+    /** 戻り（zooming-out）か。現れ始めるまでの間合いが向きで変わる */
+    returning: boolean
+  } | null>(null)
 
   useEffect(() => {
     if (nav.phase === 'zooming-in' || nav.phase === 'zooming-out') {
@@ -221,6 +237,7 @@ export function StageFade() {
         at: performance.now(),
         fromRoot: nav.nodeId === root.id,
         toRoot: nav.pendingId === root.id,
+        returning: nav.phase === 'zooming-out',
       }
     } else if (step.current?.kind === 'out') {
       if (step.current.toRoot) {
@@ -253,7 +270,8 @@ export function StageFade() {
       // 行き先の位置にもう置き換わっている。改めて現れさせず、そのまま引き継ぐ。
       // 待っているあいだ画面に残るのはこの字だけになる
       carryOpacity.value = 1
-      const u = Math.min(1, Math.max(0, elapsed - APPEAR_DELAY_MS) / APPEAR_MS)
+      const delay = current.returning ? RETURN_APPEAR_DELAY_MS : APPEAR_DELAY_MS
+      const u = Math.min(1, Math.max(0, elapsed - delay) / APPEAR_MS)
       nodeOpacity.value = 1 - (1 - u) * (1 - u)
       if (u >= 1) {
         step.current = null
@@ -272,6 +290,14 @@ export function StageFade() {
  * マテリアルを捨てないためでもある。
  */
 const PARTICLE_FADE_MS = 520
+
+/**
+ * 凝集しきった光が、引きはじめるまで留まる間（ミリ秒）。**戻り（凝集）だけ**に掛かる。
+ * 戻りの順序は「光が凝集する → 字が現れる → 光が引く」。字の立ち上がり（`APPEAR_MS`）に
+ * 頭を譲るぶんだけ光を残しておかないと、光が消えたあとに字が出る形に見えてしまう。
+ * 散開は字が先に消えて光だけが残る形なので、こちらには掛けない。
+ */
+const PARTICLE_HOLD_MS = 100
 
 /** いま描いている演出ひとつぶん。相が抜けたあとも、粒子が消えきるまで残る */
 interface Run {
@@ -318,14 +344,21 @@ export function Transition() {
   // 余韻が切れたところで粒子を捨てる。次の遷移が始まれば run ごと差し替わる
   useEffect(() => {
     if (!run) return
-    const timer = setTimeout(() => setRun(null), TRANSITION_MS + PARTICLE_FADE_MS)
+    const hold = run.mode === 'converge' ? PARTICLE_HOLD_MS : 0
+    const timer = setTimeout(() => setRun(null), TRANSITION_MS + hold + PARTICLE_FADE_MS)
     return () => clearTimeout(timer)
   }, [run])
 
   const elapsed = () => performance.now() - (run?.at ?? 0)
   const progress = () => Math.min(1, elapsed() / TRANSITION_MS)
-  /** 余韻の濃さ。演出のあいだは 1 のまま、終わってから 0 へ引く */
-  const tail = () => 1 - Math.min(1, Math.max(0, elapsed() - TRANSITION_MS) / PARTICLE_FADE_MS)
+  /**
+   * 余韻の濃さ。演出のあいだは 1 のまま、終わってから 0 へ引く。
+   * 凝集ではそのあと `PARTICLE_HOLD_MS` だけ留まり、字が現れはじめてから引く
+   */
+  const tail = () => {
+    const hold = run?.mode === 'converge' ? PARTICLE_HOLD_MS : 0
+    return 1 - Math.min(1, Math.max(0, elapsed() - TRANSITION_MS - hold) / PARTICLE_FADE_MS)
+  }
 
   if (!run) return null
 

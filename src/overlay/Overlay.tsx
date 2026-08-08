@@ -6,7 +6,7 @@
  * **組版は DOM、絵は GPU** に振り分ける（README「2 レイヤー合成」）。
  */
 
-import { useEffect, useLayoutEffect, useMemo, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useAtomValue, useSetAtom } from 'jotai'
 import {
@@ -17,6 +17,7 @@ import {
   navAtom,
   isRootAtom,
   acceptsInputAtom,
+  phaseAtom,
   leavingAtom,
   leavingToRootAtom,
 } from '../nav/atoms.ts'
@@ -26,7 +27,7 @@ import { VIEW_HEIGHT } from '../world/paper.ts'
 import { labelText, type GraphNode } from '../content/schema.ts'
 import { parseRuby } from '../content/ruby.ts'
 import { parseBlocks, startsWithBracket } from '../content/blocks.ts'
-import { APPEAR_DELAY_MS, TRANSITION_MS } from '../scene/Transition.tsx'
+import { APPEAR_DELAY_MS, RETURN_APPEAR_DELAY_MS, TRANSITION_MS } from '../scene/Transition.tsx'
 import { SpeakButton } from './SpeakButton.tsx'
 import { AudioControls } from './AudioControls.tsx'
 import { LeftArrow } from './LeftArrow.tsx'
@@ -37,12 +38,23 @@ import { LeftArrow } from './LeftArrow.tsx'
  * 表示が遅れ、続けて潜ったときにブロックが出てこないことがある。
  */
 /**
- * テキストが現れ始めるまでの間（秒）。GPU レイヤーの字と同じだけ待たせる。
+ * テキストが現れ始めるまでの間（秒）。GPU レイヤーの字（`StageFade`）と同じだけ待たせる。
+ * 向きで変わる：潜るときは持ち越しの字の着地を見せきってから、戻るときは待たずに出す
+ * （凝集しきった光をそのまま字へ渡し、光はそのあとで引く）。
  * 退場には効かせない（退場は演出の開始と同時に引いてよい）。
+ *
+ * 相が `idle` に戻ってから中身が差し替わるので、直前の遷移の向きを覚えておいて引く。
  */
-const APPEAR_DELAY_S = APPEAR_DELAY_MS / 1000
+function useAppearDelay(): number {
+  const phase = useAtomValue(phaseAtom)
+  const delay = useRef(APPEAR_DELAY_MS)
+  if (phase === 'zooming-out') delay.current = RETURN_APPEAR_DELAY_MS
+  else if (phase === 'zooming-in') delay.current = APPEAR_DELAY_MS
+  return delay.current / 1000
+}
 
 export function Overlay() {
+  const appearDelay = useAppearDelay()
   const node = useAtomValue(currentNodeAtom)
   const doc = useAtomValue(currentDocAtom)
   const children = useAtomValue(childNodesAtom)
@@ -92,7 +104,7 @@ export function Overlay() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0, transition: { duration: 0.45, delay: 0 } }}
-            transition={{ duration: 0.45, delay: APPEAR_DELAY_S }}
+            transition={{ duration: 0.45, delay: appearDelay }}
           >
             {/* 読みの空白は列の切れ目。大書の label と同じ約束で、どこで折るかは
                 コンテンツ側（`content/graph/*.yaml` の reading）が決める */}
@@ -123,7 +135,7 @@ export function Overlay() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0, transition: { duration: 0.45, delay: 0 } }}
-            transition={{ duration: 0.45, delay: APPEAR_DELAY_S + 0.08 }}
+            transition={{ duration: 0.45, delay: appearDelay + 0.08 }}
           >
             <p>{node.summary}</p>
           </motion.div>
@@ -139,7 +151,7 @@ export function Overlay() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0, transition: { duration: 0.5, delay: 0 } }}
-            transition={{ duration: 0.5, delay: APPEAR_DELAY_S + 0.12 }}
+            transition={{ duration: 0.5, delay: appearDelay + 0.12 }}
           >
             {parseBlocks(doc.body).map((block, i) =>
               block.type === 'list' ? (
@@ -291,6 +303,7 @@ function useNodePan(destinationId: string, elements: (HTMLElement | null)[], dep
  * 中身（先祖の増減）だけが差し替わるようにする。
  */
 function Breadcrumb() {
+  const appearDelay = useAppearDelay()
   const ancestry = useAtomValue(ancestryAtom)
   const dispatch = useSetAtom(navAtom)
   const accepts = useAtomValue(acceptsInputAtom)
@@ -306,7 +319,7 @@ function Breadcrumb() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0, transition: { duration: 0.45, delay: 0 } }}
-          transition={{ duration: 0.45, delay: APPEAR_DELAY_S }}
+          transition={{ duration: 0.45, delay: appearDelay }}
         >
           <span className="breadcrumb__rule" aria-hidden />
           <ol>
