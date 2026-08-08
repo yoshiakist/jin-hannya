@@ -68,7 +68,7 @@ export function NodeStage() {
  * L0 の紙面で句の範囲だけが光るのと同じ表現を、そのまま大書へ持ち込んだもの。
  */
 function Headline({ node }: { node: GraphNode }) {
-  const { chars, positions, size } = useMemo(() => headlineLayout(node.label), [node.label])
+  const { chars, positions, size } = useMemo(() => headlineLayout(node), [node])
   const owners = useMemo(() => headlineChildOwners(node), [node])
   const hoveredId = useAtomValue(navAtom).hoveredId
 

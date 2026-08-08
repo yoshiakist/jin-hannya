@@ -14,6 +14,8 @@ import { labelText, splitColumns, type GraphNode } from '../content/schema.ts'
 const HEADLINE_SIZE = VIEW_HEIGHT * 0.30
 /** 大書が 1 列で収まる上限。これを超えたら 2 列に折り返す（img_01 の 2 列組みに相当） */
 const HEADLINE_SINGLE_COLUMN_MAX = 7
+/** 大書が使える縦の帯。画面高に対する比。上ぞろえの上端もこの帯から出す */
+const HEADLINE_BAND = 0.8
 
 /** 画面右端の大書の中心 x。ワールド単位 */
 const HEADLINE_X = VIEW_HEIGHT * 0.60
@@ -60,13 +62,18 @@ function headlineColumns(label: string): string[][] {
  * 1 字の大きさは**いちばん長い列**から決める。Transition もこの結果を使って粒子の出所を決めるので、
  * 配置の計算はここ 1 箇所に集約する。
  */
-export function headlineLayout(label: string): HeadlineLayout {
-  const columns = headlineColumns(label)
+export function headlineLayout(node: GraphNode): HeadlineLayout {
+  const columns = headlineColumns(node.label)
   const longest = Math.max(...columns.map((column) => column.length))
-  const size = Math.min(HEADLINE_SIZE, (VIEW_HEIGHT * 0.80) / longest)
+  const size = Math.min(HEADLINE_SIZE, (VIEW_HEIGHT * HEADLINE_BAND) / longest)
 
-  // いちばん長い列を画面の縦中央に置いたときの上端。全列がこの高さから書き出す
-  const top = ((longest - 1) / 2) * size
+  // 書き出しの高さ。全列がここから下へ書く。
+  // 語（`kind: term`）は帯の上端で揃える。字数の違う語を続けて見ても大書の頭が動かない。
+  // 句や全文は列の長さで画面の縦中央に置く（長い label ほど帯いっぱいに伸びる）。
+  const top =
+    node.kind === 'term'
+      ? (VIEW_HEIGHT * HEADLINE_BAND) / 2 - size / 2
+      : ((longest - 1) / 2) * size
 
   const chars: string[] = []
   const positions: [number, number, number][] = []
@@ -81,8 +88,8 @@ export function headlineLayout(label: string): HeadlineLayout {
 }
 
 /** 大書が占める左右の端（ワールド単位）。字面の外側まで含む */
-function headlineEdges(label: string): { left: number; right: number } {
-  const { positions, size } = headlineLayout(label)
+function headlineEdges(node: GraphNode): { left: number; right: number } {
+  const { positions, size } = headlineLayout(node)
   const leftmost = Math.min(...positions.map(([x]) => x))
   return { left: leftmost - size / 2, right: HEADLINE_X + size / 2 }
 }
@@ -95,10 +102,10 @@ function headlineEdges(label: string): { left: number; right: number } {
  * 大書だけを左へ寄せるのではなく**視野ごと**送るので、大書と図の間隔（右から左への情報の流れ）は変わらない。
  * 収まる画面では 0 を返し、設計どおり図が画面中央に来る。
  */
-export function nodePanX(label: string, halfWidth: number): number {
+export function nodePanX(node: GraphNode, halfWidth: number): number {
   if (halfWidth <= 0) return 0
   const margin = Math.min(HEADLINE_MARGIN_PX * unitsPerPixel(1), halfWidth * 2 * HEADLINE_MARGIN_MAX_RATIO)
-  return Math.max(0, headlineEdges(label).right + margin - halfWidth)
+  return Math.max(0, headlineEdges(node).right + margin - halfWidth)
 }
 
 /** 子の図の中心 x。左の解説と右の大書に挟まれた帯の中央に置く */
@@ -235,11 +242,11 @@ export function overlayInsets(
 ): OverlayInsets {
   if (width <= 0 || height <= 0) return { headlineRight: 0, headlineLeft: 0, diagramLeft: 0 }
   const pixelsPerUnit = height / VIEW_HEIGHT
-  const camera = nodePanX(node.label, halfWidthFor(width, height))
+  const camera = nodePanX(node, halfWidthFor(width, height))
   // 画面右端からの距離。x = camera が画面中央に来る
   const insetOf = (x: number) => width / 2 - (x - camera) * pixelsPerUnit
 
-  const edges = headlineEdges(node.label)
+  const edges = headlineEdges(node)
   const headlineLeft = insetOf(edges.left)
   const diagram = diagramLeftEdge(node, children)
   return {

@@ -61,7 +61,7 @@ function CameraRig() {
   const nodeX = useMemo(() => {
     if (toRoot) return 0
     const destination = nodeById(destinationId) ?? root
-    return nodePanX(destination.label, halfWidth)
+    return nodePanX(destination, halfWidth)
   }, [toRoot, destinationId, halfWidth])
 
   useEffect(() => {

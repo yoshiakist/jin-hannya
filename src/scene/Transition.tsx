@@ -92,7 +92,7 @@ function visibleGlyphs(node: GraphNode): StageGlyph[] {
     })
   }
 
-  const { chars, positions, size } = headlineLayout(node.label)
+  const { chars, positions, size } = headlineLayout(node)
   // 図を持たないノードでは、大書の中の子の範囲が入口になる（描画側と同じ表を引く）
   const owners = headlineChildOwners(node)
   const headline: StageGlyph[] = chars.map((char, i) => {
