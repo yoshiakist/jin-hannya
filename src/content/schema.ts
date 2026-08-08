@@ -55,7 +55,7 @@ export function splitColumns(value: string): string[] {
     .filter((column) => column.length > 0)
 }
 
-export const GraphNode = z.object({
+const GraphNodeFields = z.object({
   id: Slug,
   kind: NodeKind,
   /**
@@ -74,7 +74,15 @@ export const GraphNode = z.object({
   summary: z.string().min(1),
   parent: Slug.optional(),
   children: z.array(Slug).default([]),
-  /** 隣接ノード。フィールドとしては持つが UI・遷移は未定義（README「設計対象外」） */
+  /**
+   * 隣接ノードの帰属先。`parent` と排他で、**深度を持たない語**（下位分類ではないが
+   * その層の理解に要る語）がどの層に属するかを示す。URL と現在位置はこれを親として辿る。
+   */
+  anchor: Slug.optional(),
+  /**
+   * 隣接ノード。包含ではない横の関係で、図には出さず「関連語句」として出す。
+   * 向きを持たないので**片側にだけ書けばよい**（逆向きはローダが張る）。
+   */
   related: z.array(Slug).default([]),
   layout: Layout,
   /** 経文に登場しない概念ノードは持たない */
@@ -82,6 +90,23 @@ export const GraphNode = z.object({
   /** assets/voice/ 配下のファイル名。未収録なら省略 */
   audio: z.string().optional(),
 })
+
+/**
+ * 木の子（`parent` / `children`）と隣接（`anchor` / `related`）は別の関係で、混ぜられない。
+ * 隣接ノードは層に属するだけなので、そこからさらに木を生やさない。
+ */
+export const GraphNode = GraphNodeFields.refine(
+  (node) => !(node.parent && node.anchor),
+  { message: 'parent と anchor は排他。木の子か隣接語かのどちらかにする', path: ['anchor'] },
+)
+  .refine((node) => !(node.anchor && node.children.length > 0), {
+    message: '隣接ノード（anchor 持ち）は children を持てない',
+    path: ['children'],
+  })
+  .refine((node) => !(node.anchor && node.layout !== 'none'), {
+    message: '隣接ノードは子の図を持たないので layout: none にする',
+    path: ['layout'],
+  })
 export type GraphNode = z.infer<typeof GraphNode>
 
 /**

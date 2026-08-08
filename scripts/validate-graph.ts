@@ -89,12 +89,31 @@ for (const node of nodes.values()) {
   // 参照切れ
   for (const [field, ids] of [
     ['parent', node.parent ? [node.parent] : []],
+    ['anchor', node.anchor ? [node.anchor] : []],
     ['children', node.children],
     ['related', node.related],
   ] as const) {
     for (const id of ids) {
       if (!nodes.has(id)) fail(`${at}: ${field} が存在しないノード "${id}" を参照している`)
     }
+  }
+
+  // 隣接（anchor / related）。向きを持たない関係なので片側にだけ書く。
+  // 対称化はローダが行うため、ここでは「両側に書いてある」ことは咎めず、
+  // **包含と隣接が同じ 2 ノードに二重に張られること**だけを落とす（関係の種類が曖昧になる）
+  if (node.related.includes(node.id)) fail(`${at}: related が自分自身を含んでいる`)
+  if (node.anchor === node.id) fail(`${at}: anchor が自分自身を指している`)
+  for (const id of node.related) {
+    const kin = id === node.parent || node.children.includes(id) || id === node.anchor
+    if (kin) fail(`${at}: "${id}" と包含（parent/children/anchor）と related の両方で結ばれている`)
+    const other = nodes.get(id)
+    if (other && (other.parent === node.id || other.children.includes(node.id))) {
+      fail(`${at}: "${id}" とは親子なので related には書かない（関連語句は包含でない関係だけ）`)
+    }
+  }
+  // 隣接ノードは経文に現れない概念語なので range を持たない。持つなら木の子であるはず
+  if (node.anchor && node.range) {
+    fail(`${at}: anchor 持ちなのに range がある（経文に現れる語は木の子として置く）`)
   }
 
   // 親子関係の非対称
@@ -170,8 +189,15 @@ for (const node of nodes.values()) {
   }
 }
 
-// 到達不能な孤立ノード
+// 到達不能な孤立ノード。
+// 隣接ノードは木の子として辿れないので、anchor を持つノードを帰属先から辿れる辺として足す
+// （related だけで繋がったノードは、どの層にも属さないので孤立とみなす）
 if (roots.length === 1) {
+  const anchored = new Map<string, string[]>()
+  for (const node of nodes.values()) {
+    if (!node.anchor) continue
+    anchored.set(node.anchor, [...(anchored.get(node.anchor) ?? []), node.id])
+  }
   const reachable = new Set<string>()
   const stack = [roots[0]!.id]
   while (stack.length > 0) {
@@ -179,6 +205,7 @@ if (roots.length === 1) {
     if (reachable.has(id)) continue
     reachable.add(id)
     for (const child of nodes.get(id)?.children ?? []) stack.push(child)
+    for (const satellite of anchored.get(id) ?? []) stack.push(satellite)
   }
   for (const id of nodes.keys()) {
     if (!reachable.has(id)) fail(`${id}: 根から到達できない孤立ノード`)

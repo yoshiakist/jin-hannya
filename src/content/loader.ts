@@ -100,6 +100,46 @@ export function childrenOf(node: GraphNode): GraphNode[] {
 }
 
 /**
+ * 隣接の表。**向きを持たない関係**なので、YAML の片側の記述から両向きを張る。
+ * 両側に手書きさせると必ず片方が腐るため、対称化はここ 1 箇所で行う。
+ *
+ * エッジは 2 つの書き方から作る。
+ *   - `related: [...]`   … 同じ層の語どうしの横の線
+ *   - `anchor: <id>`     … 隣接ノードとその帰属先。帰属は同時に 1 本の隣接でもある
+ *
+ * 並びは「自分の `related` に書いた順 → `anchor` → 他ノードから張られた順」で、
+ * ファイル名順に読むので毎回同じになる（散らし配置の乱数の種にも使うので順序が要る）。
+ */
+const adjacency: ReadonlyMap<string, readonly string[]> = (() => {
+  const table = new Map<string, string[]>()
+  const link = (from: string, to: string) => {
+    if (from === to || !nodes.has(from) || !nodes.has(to)) return
+    const list = table.get(from) ?? []
+    if (!list.includes(to)) list.push(to)
+    table.set(from, list)
+  }
+  for (const node of [...nodes.values()].sort((a, b) => a.id.localeCompare(b.id))) {
+    for (const id of node.related) {
+      link(node.id, id)
+      link(id, node.id)
+    }
+    if (node.anchor) {
+      link(node.id, node.anchor)
+      link(node.anchor, node.id)
+    }
+  }
+  return table
+})()
+
+/** 関連語句として並べる隣接ノード。木の子は含まない */
+export function relatedOf(node: GraphNode): GraphNode[] {
+  return (adjacency.get(node.id) ?? []).flatMap((id) => {
+    const found = nodes.get(id)
+    return found ? [found] : []
+  })
+}
+
+/**
  * 全文の文字インデックス → その字が属する句（根の子）の id。範囲外の字は null。
  *
  * L0 で触れられるのは根の子だけなので、その `range` を展開して 1 本の表にしておく。
@@ -144,13 +184,19 @@ export function headlineChildOwners(node: GraphNode): (string | null)[] {
   return owners
 }
 
-/** 根から `node` までの経路。現在位置インジケータとルーティングが使う */
+/**
+ * 根から `node` までの経路。現在位置インジケータとルーティングが使う。
+ *
+ * 隣接ノードは木の子ではないが、URL にも現在位置にも出す必要があるので
+ * `anchor` を親の代わりに辿る。**深度そのものは増えたことにならない**（帰属先と同じ層に居る）
+ * が、経路としては 1 つ深い位置に並ぶ。原稿の水準はアンカーに合わせる（→ skill: doc-writing）。
+ */
 export function ancestryOf(node: GraphNode): GraphNode[] {
   const path: GraphNode[] = [node]
   const seen = new Set([node.id])
   let current = node
-  while (current.parent) {
-    const parent = nodes.get(current.parent)
+  while (current.parent ?? current.anchor) {
+    const parent = nodes.get((current.parent ?? current.anchor)!)
     if (!parent || seen.has(parent.id)) break // 循環は validate-graph が落とす
     path.unshift(parent)
     seen.add(parent.id)

@@ -85,11 +85,13 @@ body {
   --headline-left: 150px;
   --diagram-left: 150px;
   --summary-width: 0px;
+  --doc-width: 0px;
 
   /* 大書との間合い。読み・サマリー・本文の x はこの 3 つだけで動かせる */
   --reading-gap: clamp(15px, 1.6vw, 32px);
   --summary-gap: clamp(26px, 3.4vw, 64px);
   --doc-gap: clamp(28px, 3.6vw, 68px);
+  --related-gap: clamp(30px, 4vw, 76px);
 
   /* L1 以降のドラッグパン（Overlay.tsx が入れる）。組版を崩さないよう transform で当てる。
      GPU レイヤーのカメラと同じ値を見るので、大書・図とテキストは一緒に動く */
@@ -102,6 +104,8 @@ body {
     calc(var(--summary-right) + var(--summary-width) + var(--doc-gap) + 150px),
     calc(var(--diagram-left) + var(--doc-gap))
   );
+  /* 関連語句は本文のさらに左。本文の幅は組版の結果なので実測を足す */
+  --related-right: calc(var(--doc-right) + var(--doc-width) + var(--related-gap));
 }
 
 .overlay > * {
@@ -257,6 +261,92 @@ body {
   letter-spacing: 0.02em;
   /* 本文よりわずかに退かせる。読みの補助であって本文ではない */
   color: var(--text-dim);
+}
+
+/* --- 関連語句 --------------------------------------------------------------- */
+
+/* 木の子ではない隣接語。本文のさらに左に、整列させず散らして浮かべる。
+   並べると順序や優劣を主張してしまうので、位置は id から引いた擬似乱数が決める
+   （Overlay.tsx の `scatter`）。ここは受け皿だけを用意する */
+.overlay__related {
+  position: absolute;
+  top: 14vh;
+  right: var(--related-right);
+  height: 68vh;
+  transform: translateX(var(--node-pan-px));
+  /* 右から左へ読む並びに合わせ、見出しを右端に置く（DOM 順は見出しが先） */
+  display: flex;
+  flex-direction: row-reverse;
+  align-items: flex-start;
+  gap: clamp(14px, 1.8vw, 30px);
+}
+
+.overlay__related-heading {
+  margin: 0;
+  writing-mode: vertical-rl;
+  font-size: clamp(13px, 1.4vh, 16px);
+  letter-spacing: 0.42em;
+  color: var(--text-dim);
+  opacity: 0.75;
+}
+
+/* 語を散らす面。幅は固定し、中の語は右端からの距離（--x）で置く */
+.overlay__related-cloud {
+  position: relative;
+  width: clamp(150px, 21vh, 260px);
+  height: 100%;
+}
+
+.related-term {
+  position: absolute;
+  right: var(--x);
+  top: var(--y);
+  margin: 0;
+  padding: 0.2em 0.1em;
+  border: 0;
+  background: none;
+  writing-mode: vertical-rl;
+  font-family: var(--serif);
+  font-size: clamp(18px, 2.1vh, 23px);
+  letter-spacing: 0.16em;
+  color: var(--text);
+  opacity: 0.8;
+  cursor: pointer;
+  transition:
+    color 0.35s ease,
+    opacity 0.35s ease,
+    text-shadow 0.35s ease;
+  /* ゆっくり漂わせる。尺と位相は語ごとに違う（一斉に動くと機械が動いて見える） */
+  animation: related-drift var(--drift-duration) ease-in-out var(--drift-delay) infinite alternate;
+}
+
+.related-term:hover,
+.related-term:focus-visible {
+  color: var(--focus);
+  opacity: 1;
+  /* hover の琥珀は GPU レイヤーのグローと同じ色。DOM 側は淡い滲みで受ける */
+  text-shadow: 0 0 14px rgb(255 184 92 / 0.5);
+  outline: none;
+}
+
+.related-term:disabled {
+  cursor: default;
+}
+
+@keyframes related-drift {
+  from {
+    transform: translate(0, 0);
+  }
+  to {
+    transform: translate(var(--drift-x), var(--drift-y));
+  }
+}
+
+/* 動きを減らす設定では漂わせない。位置（散らし）はそのまま残す */
+@media (prefers-reduced-motion: reduce) {
+  .related-term {
+    animation: none;
+  }
 }
 
 /* --- 現在位置インジケータ --------------------------------------------------- */

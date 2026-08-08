@@ -50,8 +50,8 @@ src/
             node-layout.ts(L1 以降の大書・図の寸法／DOM 用の目印 overlayInsets)
   audio/    index.ts
 scripts/    build-glyphs.ts svg-path.ts sdf.ts(グロー用距離場) validate-graph.ts
-content/    sutra.txt / graph/*.yaml(18) / docs/*.md(18)
-assets/     svg/(筆文字123) pattern/circle.svg bgm/ sfx/ voice/(未収録)
+content/    sutra.txt / graph/*.yaml(21) / docs/*.md(21)
+assets/     svg/(筆文字127) pattern/circle.svg bgm/ sfx/ voice/(未収録)
 ```
 
 **2 レイヤー合成: 組版は DOM、絵は GPU。** 縦組みの長文は `writing-mode: vertical-rl` の DOM オーバーレイ、
@@ -70,6 +70,7 @@ assets/     svg/(筆文字123) pattern/circle.svg bgm/ sfx/ voice/(未収録)
 - **面の用意をやり直さない。** 紙面は畳まず（潜っている間は描かず・計算せず・当たり判定にも出さないだけ）、マテリアルは紙面で 1 本。マウントし直すと 90 字ぶんの用意を 1 フレームで払って固まる。遷移中に固まったり固まらなかったりしたら、まずマテリアルを作り直している所を疑う（TSL の吐くソースが毎回変わり、プログラムキャッシュに当たらない）。
 - 遷移中の濃さは**深度ごとに 1 本ずつ**（`paperOpacity` / `nodeOpacity`）。戻りぎわは大書と紙面が同時に画面へ居る。
 - `layout`（`none` / `circle` / `column`）は**ノード側の YAML が持つ**。描画側で決めない。
+- **エッジは関係の種類で選ぶ。深さの都合で選ばない。** 包含は `parent`/`children`（図に出る・1 段深くなる）、隣接は `anchor`/`related`（関連語句として本文の左に散る・深度は増えない）。`related` は向きを持たないので片側にだけ書き、逆向きはローダの隣接表が張る。関連語句の散らし位置は `id` から引く（実行のたびに振り直すと、戻ったとき同じ語を掴み直せない）。
 - `label` の `/` は**大書の列の切れ目**（`headlineLayout`）。列の中に空白は置けない。字だけが要る場所は `labelText()` を通す（`range` の突き合わせ・グリフ在庫・図の中の子・現在位置インジケータ）。
 - `reading` の切れ目も **`/`**（`label` と同じ約束。列の中の空白はそのまま出る）。読みは大書の右、サマリーは大書の左、本文はさらにその左に置く。x は `overlayInsets()` が出す 3 つの目印（大書の左右端・図の左端）から CSS が組むので、間合いを変えるときは `.overlay` の `--reading-gap` / `--summary-gap` / `--doc-gap` を触る。
 - パンは深度で別勘定。L0 は `panXAtom`（＋拡大・縦送り）、**L1 以降は `nodePanXAtom` の左右だけ**。L1 以降のばねは atom 側に 1 つだけ置き、カメラは値をそのまま読む（カメラでも補間すると大書が DOM の本文に遅れてずれる）。本文は `max-width` で切り詰めず、はみ出したぶんはパンで補う。可動域は本文・サマリーの `offsetLeft` の実測から引く。

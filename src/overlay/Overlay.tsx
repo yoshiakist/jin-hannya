@@ -13,6 +13,7 @@ import {
   currentNodeAtom,
   currentDocAtom,
   childNodesAtom,
+  relatedNodesAtom,
   ancestryAtom,
   navAtom,
   isRootAtom,
@@ -66,11 +67,13 @@ export function Overlay() {
   // サマリーの幅は字数と `max-height` が決める。本文はその左から始まるので実測して渡す
   const summary = useMeasuredElement()
   const body = useMeasuredElement()
+  // 関連語句は本文のさらに左。本文の幅も組版の結果なので実測して渡す
+  const related = useMeasuredElement()
   const nav = useAtomValue(navAtom)
   const nodePan = useNodePan(
     // 行き先が決まった時点でパンを戻す（遷移中は pendingId が行き先）
     nav.pendingId ?? nav.nodeId,
-    [summary.element, body.element],
+    [summary.element, body.element, related.element],
     [node, size, summary.width, body.width],
   )
 
@@ -86,6 +89,7 @@ export function Overlay() {
           '--headline-left': `${insets.headlineLeft}px`,
           '--diagram-left': `${insets.diagramLeft}px`,
           '--summary-width': `${summary.width}px`,
+          '--doc-width': `${body.width}px`,
           '--node-pan-px': `${nodePan}px`,
         } as React.CSSProperties
       }
@@ -179,9 +183,115 @@ export function Overlay() {
         )}
       </AnimatePresence>
 
+      <RelatedTerms measure={related.measure} appearDelay={appearDelay} />
+
       <LeftArrow />
     </div>
   )
+}
+
+/**
+ * 関連語句。木の子ではない隣接語を、本文のさらに左に散らして浮かべる。
+ *
+ * 並べない。子の図（円相・縦連結）が関係の**構造**を見せる場所であるのに対し、ここは
+ * 「気になったものへ行ってよい」という誘いなので、整列させると順序や優劣を主張してしまう。
+ * 位置は id から決まる擬似乱数で散らし、ゆっくり漂わせる（紙面の字のゆらぎと同じ考え方）。
+ *
+ * 位置が毎回同じであることは大事で、戻ってきたときに同じ語が同じ所に居ないと、
+ * 「さっき見たあれ」を掴み直せない。乱数は必ず id から引き、実行のたびに振り直さない。
+ */
+function RelatedTerms({
+  measure,
+  appearDelay,
+}: {
+  measure: (element: HTMLElement | null) => void
+  appearDelay: number
+}) {
+  const related = useAtomValue(relatedNodesAtom)
+  const leaving = useAtomValue(leavingAtom)
+  const accepts = useAtomValue(acceptsInputAtom)
+  const dispatch = useSetAtom(navAtom)
+
+  return (
+    <AnimatePresence>
+      {related.length > 0 && !leaving && (
+        <motion.aside
+          key={`related-${related.map((n) => n.id).join('-')}`}
+          ref={measure}
+          className="overlay__related"
+          aria-label="関連語句"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0, transition: { duration: 0.45, delay: 0 } }}
+          transition={{ duration: 0.6, delay: appearDelay + 0.18 }}
+        >
+          <p className="overlay__related-heading" aria-hidden>
+            関連語句
+          </p>
+          <div className="overlay__related-cloud">
+            {related.map((term, i) => {
+              const spot = scatter(term.id, i, related.length)
+              return (
+                <button
+                  key={term.id}
+                  type="button"
+                  className="related-term"
+                  disabled={!accepts}
+                  style={
+                    {
+                      '--x': `${spot.x}%`,
+                      '--y': `${spot.y}%`,
+                      '--drift-x': `${spot.driftX}px`,
+                      '--drift-y': `${spot.driftY}px`,
+                      '--drift-duration': `${spot.duration}s`,
+                      '--drift-delay': `${spot.delay}s`,
+                    } as React.CSSProperties
+                  }
+                  onClick={() => dispatch({ type: 'enter', id: term.id })}
+                >
+                  {labelText(term.label)}
+                </button>
+              )
+            })}
+          </div>
+        </motion.aside>
+      )}
+    </AnimatePresence>
+  )
+}
+
+/**
+ * 散らし配置。id から引いた擬似乱数で、雲の中の位置と漂い方を決める。
+ *
+ * 縦（`y`）だけは語ごとの帯に分ける。完全な乱数だと重なる組み合わせが出て、
+ * 2 つの語が読めなくなる。帯の中で揺らせば、整列しては見えないまま重なりだけが避けられる。
+ */
+function scatter(id: string, index: number, count: number) {
+  const seed = hash(id)
+  const pick = (shift: number, min: number, max: number) =>
+    min + (((seed >>> shift) & 0xff) / 0xff) * (max - min)
+
+  const band = 100 / count
+  return {
+    // 右端（本文側）に寄りすぎない範囲で左右に散らす
+    x: pick(0, 3, 72),
+    y: index * band + pick(8, 0.12, 0.62) * band,
+    driftX: pick(16, -7, 7),
+    driftY: pick(20, -9, 9),
+    duration: pick(24, 7, 13),
+    // 位相をずらす。負の delay で最初から途中の状態にする（一斉に動き出さない）
+    delay: -pick(12, 0, 12),
+  }
+}
+
+/** 文字列から 32bit の種を作る（FNV-1a）。実行のたびに同じ値になることだけが要件 */
+function hash(value: string): number {
+  let h = 0x811c9dc5
+  for (let i = 0; i < value.length; i++) {
+    h ^= value.charCodeAt(i)
+    h = Math.imul(h, 0x01000193)
+  }
+  return h >>> 0
 }
 
 /**

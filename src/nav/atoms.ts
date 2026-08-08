@@ -6,7 +6,7 @@
 import { atom } from 'jotai'
 import { atomWithReducer } from 'jotai/utils'
 import { reduce, initialState, acceptsInput, direction, type NavState, type NavEvent } from './fsm.ts'
-import { root, nodeById, ancestryOf, childrenOf, docById } from '../content/loader.ts'
+import { root, nodeById, ancestryOf, childrenOf, relatedOf, docById } from '../content/loader.ts'
 import { detectTier, type Tier } from '../scene/tier.ts'
 import type { GraphNode } from '../content/schema.ts'
 
@@ -31,6 +31,12 @@ export const ancestryAtom = atom<GraphNode[]>((get) => ancestryOf(get(currentNod
 
 /** 現在ノードの子。円相・縦連結の配置対象 */
 export const childNodesAtom = atom<GraphNode[]>((get) => childrenOf(get(currentNodeAtom)))
+
+/**
+ * 現在ノードの隣接語。図には出さず、本文のさらに左に「関連語句」として散らす。
+ * 木の子（`childNodesAtom`）とは別の関係なので、両方に出ることはない。
+ */
+export const relatedNodesAtom = atom<GraphNode[]>((get) => relatedOf(get(currentNodeAtom)))
 
 /** hover 中のノード。琥珀グローの対象 */
 export const hoveredNodeAtom = atom<GraphNode | null>((get) => {
