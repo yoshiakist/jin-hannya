@@ -27,6 +27,7 @@ import { nodePanXAtom, nodePanRangeAtom, settleNodePanAtom, unitsPerPixel } from
 import { VIEW_HEIGHT } from '../world/paper.ts'
 import { labelText, splitColumns, type GraphNode } from '../content/schema.ts'
 import { parseRuby } from '../content/ruby.ts'
+import { glyphUrl } from '../content/glyph-svg.ts'
 import { parseBlocks, startsWithBracket } from '../content/blocks.ts'
 import { APPEAR_DELAY_MS, RETURN_APPEAR_DELAY_MS, TRANSITION_MS } from '../scene/Transition.tsx'
 import { SpeakButton } from './SpeakButton.tsx'
@@ -249,7 +250,7 @@ function RelatedTerms({
                   }
                   onClick={() => dispatch({ type: 'enter', id: term.id })}
                 >
-                  {labelText(term.label)}
+                  <RelatedLabel text={labelText(term.label)} />
                 </button>
               )
             })}
@@ -257,6 +258,39 @@ function RelatedTerms({
         </motion.aside>
       )}
     </AnimatePresence>
+  )
+}
+
+/**
+ * 関連語句の字面。大書や紙面と同じ筆文字の SVG を 1 字ずつ縦に積む。
+ *
+ * ここだけ書体で出すと、同じ画面の中で「行ける語」の見た目が 2 種類になる。字は型紙
+ * （`mask-image`）として敷き、塗りは CSS のトークンから引くので、hover の琥珀も他と揃う。
+ *
+ * 在庫が無い字は素の文字のまま出す。`label` の在庫はビルド時に検証されているので通常は起きない
+ * が、ここで落ちると語ごと消えて行き先が失われるため、字面が変わるだけに留める。
+ */
+function RelatedLabel({ text }: { text: string }) {
+  return (
+    <>
+      {Array.from(text).map((char, i) => {
+        const url = glyphUrl(char)
+        return url ? (
+          <span
+            key={i}
+            className="related-term__glyph"
+            style={{ '--glyph': `url(${JSON.stringify(url)})` } as React.CSSProperties}
+            // 字面は装飾。読み上げ・検索には素の文字を渡す
+            aria-hidden
+          />
+        ) : (
+          <span key={i} className="related-term__char">
+            {char}
+          </span>
+        )
+      })}
+      <span className="visually-hidden">{text}</span>
+    </>
   )
 }
 

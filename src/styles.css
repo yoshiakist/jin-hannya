@@ -72,6 +72,18 @@ body {
   inset: 0;
 }
 
+/* 画面には出さず、支援技術にだけ渡す字（筆文字の SVG に置き換えた語の素の文字など） */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 /* --- オーバーレイ ---------------------------------------------------------- */
 
 .overlay {
@@ -301,31 +313,63 @@ body {
   position: absolute;
   right: var(--x);
   top: var(--y);
+  /* 1 字の大きさ。字面は SVG なので書体の字面率に引きずられない。
+     大書ほどではないが、行ける語として拾えるだけの大きさを取る */
+  --glyph-size: clamp(24px, 2.8vh, 31px);
+  display: flex;
+  /* 縦組み。字は 1 枚ずつ積むので writing-mode ではなく列で並べる */
+  flex-direction: column;
+  align-items: center;
+  gap: 0.16em;
   margin: 0;
   padding: 0.2em 0.1em;
   border: 0;
   background: none;
-  writing-mode: vertical-rl;
   font-family: var(--serif);
-  font-size: clamp(18px, 2.1vh, 23px);
-  letter-spacing: 0.16em;
+  font-size: var(--glyph-size);
   color: var(--text);
   opacity: 0.8;
   cursor: pointer;
   transition:
     color 0.35s ease,
     opacity 0.35s ease,
-    text-shadow 0.35s ease;
+    filter 0.35s ease;
   /* ゆっくり漂わせる。尺と位相は語ごとに違う（一斉に動くと機械が動いて見える） */
   animation: related-drift var(--drift-duration) ease-in-out var(--drift-delay) infinite alternate;
+}
+
+/* 字 1 枚。SVG を型紙として敷き、塗りは現在の色（墨／琥珀）から取る */
+.related-term__glyph {
+  display: block;
+  width: var(--glyph-size);
+  height: var(--glyph-size);
+  background-color: currentcolor;
+  mask-image: var(--glyph);
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  -webkit-mask-image: var(--glyph);
+  -webkit-mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+}
+
+/* 在庫の無い字だけの逃げ道。SVG の字と大きさを揃える */
+.related-term__char {
+  display: block;
+  width: var(--glyph-size);
+  height: var(--glyph-size);
+  line-height: 1;
+  text-align: center;
 }
 
 .related-term:hover,
 .related-term:focus-visible {
   color: var(--focus);
   opacity: 1;
-  /* hover の琥珀は GPU レイヤーのグローと同じ色。DOM 側は淡い滲みで受ける */
-  text-shadow: 0 0 14px rgb(255 184 92 / 0.5);
+  /* hover の琥珀は GPU レイヤーのグローと同じ色。DOM 側は淡い滲みで受ける。
+     字面が塗りつぶしの図形なので、text-shadow ではなく drop-shadow で受ける */
+  filter: drop-shadow(0 0 9px rgb(255 184 92 / 0.5));
   outline: none;
 }
 
