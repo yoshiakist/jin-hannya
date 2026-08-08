@@ -52,6 +52,20 @@ const SWAY = 0.1
 const SWAY_OMEGA: [number, number] = [2, 7]
 
 /**
+ * **字ごと**に引く癖の幅。粒ごとの乱数だけだと、どの字も同じ法則の粒 100 個になるので、
+ * 統計が揃ってしまって紙面ぜんたいが一枚の板のように散る。字の単位でも振っておく。
+ *   GUST … その字ぜんたいを流す風。向きは上寄りの半円から引き、粒すべての初速に足す
+ *   GUST_ARC … 風向きの範囲［π 単位］。0.15〜0.85π なので必ず上向きの成分を持つ
+ *   SPEED_SPAN / RISE_SPAN / SWAY_SPAN … 飛距離・浮き上がり・揺れに掛かる字ごとの倍率
+ * いずれも字面の一辺を単位に、粒ごとの乱数の**外側**に掛かる
+ */
+const GUST: [number, number] = [0.15, 0.55]
+const GUST_ARC: [number, number] = [0.15, 0.85]
+const SPEED_SPAN: [number, number] = [0.75, 1.4]
+const RISE_SPAN: [number, number] = [0.7, 1.4]
+const SWAY_SPAN: [number, number] = [0.6, 1.5]
+
+/**
  * 濃さの立ち上がり／落ちの尺（進行度 τ に対する比）。
  *
  * **字（Transition.tsx の `glyphFade`）とは別の尺**である。字は素早く消え、粒子はそのあとも
@@ -80,7 +94,7 @@ export interface ParticleSource {
   size: number
 }
 
-/** 決定的な擬似乱数。同じ字が同じ散り方をするよう seed を位置から作る */
+/** 決定的な擬似乱数。seed は `glyphSeed()` が字ごとに作る */
 function random(seed: number): () => number {
   let state = (seed * 2654435761) >>> 0
   return () => {
@@ -90,6 +104,25 @@ function random(seed: number): () => number {
     z ^= z + Math.imul(z ^ (z >>> 7), z | 61)
     return ((z ^ (z >>> 14)) >>> 0) / 4294967296
   }
+}
+
+/**
+ * 字ごとの種。**字そのものと画面上の位置**から作るので、
+ *   ・隣り合う字はそれぞれ別の癖で散る
+ *   ・同じ字が同じ場所にあれば、何度潜っても同じ散り方になる（紙面には同じ字が何度も出る）
+ *   ・sources の並び順が変わっても癖が入れ替わらない
+ * 位置は字面の一辺で量子化してから混ぜる（浮動小数の下位桁で種が跳ねないように）。
+ */
+function glyphSeed(source: ParticleSource): number {
+  const cell = source.size || 1
+  let h = 2166136261
+  const mix = (value: number) => {
+    h = Math.imul(h ^ (value | 0), 16777619)
+  }
+  for (const code of source.char) mix(code.codePointAt(0) ?? 0)
+  mix(Math.round(source.position[0] / cell))
+  mix(Math.round(source.position[1] / cell))
+  return (h ^ (h >>> 16)) >>> 0
 }
 
 /**
@@ -138,11 +171,20 @@ export function TransitionParticles({
     const rise: number[] = []
     const sway: number[] = []
 
-    sources.forEach((source, s) => {
+    sources.forEach((source) => {
       const samples = glyphParticles(source.char, perGlyph)
       if (!samples) return
-      const rng = random(s + 1)
+      const rng = random(glyphSeed(source))
       const count = samples.length / 2
+
+      // この字ぜんたいに掛かる癖。粒ごとの乱数より**先に**引く（引く順を変えると癖も変わる）
+      const gustAngle = Math.PI * (GUST_ARC[0] + rng() * (GUST_ARC[1] - GUST_ARC[0]))
+      const gust = source.size * (GUST[0] + rng() * (GUST[1] - GUST[0]))
+      const gustX = Math.cos(gustAngle) * gust
+      const gustY = Math.sin(gustAngle) * gust
+      const speedScale = SPEED_SPAN[0] + rng() * (SPEED_SPAN[1] - SPEED_SPAN[0])
+      const riseScale = RISE_SPAN[0] + rng() * (RISE_SPAN[1] - RISE_SPAN[0])
+      const swayScale = SWAY_SPAN[0] + rng() * (SWAY_SPAN[1] - SWAY_SPAN[0])
 
       for (let i = 0; i < count; i++) {
         const hx = source.position[0] + samples[i * 2]! * source.size
@@ -155,18 +197,19 @@ export function TransitionParticles({
           const dx = hx - source.position[0]
           const dy = hy - source.position[1]
           const len = Math.hypot(dx, dy) || 1e-6
-          const speed = source.size * (0.625 + rng() * 1.25) * (1 + UP_BIAS * (dy / len))
-          vel.push((dx / len) * speed, (dy / len) * speed, 0)
-          rise.push(source.size * RISE * (0.7 + rng() * 0.6))
+          const speed = source.size * (0.625 + rng() * 1.25) * (1 + UP_BIAS * (dy / len)) * speedScale
+          // 放射（形が解ける動き）に、字ぜんたいを流す風を足す。字ごとに流れる向きが変わる
+          vel.push((dx / len) * speed + gustX, (dy / len) * speed + gustY, 0)
+          rise.push(source.size * RISE * riseScale * (0.7 + rng() * 0.6))
           sway.push(
-            source.size * SWAY * (0.4 + rng() * 1.2),
-            SWAY_OMEGA[0] + rng() * (SWAY_OMEGA[1] - SWAY_OMEGA[0]),
+            source.size * SWAY * swayScale * (0.4 + rng() * 1.2),
+            (SWAY_OMEGA[0] + rng() * (SWAY_OMEGA[1] - SWAY_OMEGA[0])) * swayScale,
             rng() * Math.PI * 2,
           )
         } else {
           // 画面全体からの薄い流入。散開の逆再生にしないため分布を変える
           const angle = rng() * Math.PI * 2
-          const radius = source.size * (6 + rng() * 14)
+          const radius = source.size * (6 + rng() * 14) * speedScale
           away.push(source.position[0] + Math.cos(angle) * radius, source.position[1] + Math.sin(angle) * radius, 0)
         }
       }
