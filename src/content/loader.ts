@@ -116,6 +116,34 @@ export const SUTRA_INDEX_TO_NODE: readonly (string | null)[] = (() => {
   return table
 })()
 
+/**
+ * 大書の中の入口。`labelText(node.label)` と同じ順・同じ長さで、その字から潜れる子の id を返す
+ * （どの子にも属さない字は null）。
+ *
+ * **子の関係図を持たないノード（`layout: none`）だけが持つ。** 図があるノードでは子は図の中に
+ * 出ているので、大書にも入口を作ると同じ子への口が 2 つでき、持ち越しの対応づけも二重になる。
+ *
+ * 判定は `range` の内包で行う。L0 の紙面で句の範囲だけが光るのと同じ規則を大書へ持ち込んだもので、
+ * 表の引き方（`SUTRA_INDEX_TO_NODE`）も揃えてある。hover の判定と、遷移で「どの字が次の大書へ
+ * 持ち越されるか」の判定が同じ表を引く。
+ */
+export function headlineChildOwners(node: GraphNode): (string | null)[] {
+  const chars = Array.from(labelText(node.label))
+  const owners: (string | null)[] = new Array(chars.length).fill(null)
+  if (node.layout !== 'none' || !node.range) return owners
+
+  const [start, end] = node.range
+  // 根の range は全文を指し、label は大書用の題名なので字数が合わない。入口は出さない
+  if (end - start !== chars.length) return owners
+
+  for (const child of childrenOf(node)) {
+    if (!child.range) continue
+    const [from, to] = child.range
+    for (let i = Math.max(from, start); i < Math.min(to, end); i++) owners[i - start] = child.id
+  }
+  return owners
+}
+
 /** 根から `node` までの経路。現在位置インジケータとルーティングが使う */
 export function ancestryOf(node: GraphNode): GraphNode[] {
   const path: GraphNode[] = [node]

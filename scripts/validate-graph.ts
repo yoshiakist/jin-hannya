@@ -121,6 +121,15 @@ for (const node of nodes.values()) {
   if (node.layout !== 'none' && node.children.length === 0) {
     fail(`${at}: layout: ${node.layout} だが children が空。配置する子が無い`)
   }
+  // 図を持たないノードの入口は大書そのもの（`headlineChildOwners`）。子が range を持たないと
+  // 大書のどの字にも当たらず、その子へ潜る手立てが無くなる。根だけは L0 の紙面が入口になる
+  if (node.layout === 'none' && node.kind !== 'sutra') {
+    for (const childId of node.children) {
+      if (!nodes.get(childId)?.range) {
+        fail(`${at}: layout: none なので大書の中が入口になるが、子 "${childId}" が range を持たない（潜れない）`)
+      }
+    }
+  }
 
   // 解説
   if (!existsSync(join(DOCS_DIR, `${node.id}.md`))) fail(`${at}: content/docs/${node.id}.md が無い`)

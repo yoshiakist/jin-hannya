@@ -25,7 +25,7 @@ import {
   DIAGRAM_X,
 } from '../world/node-layout.ts'
 import { navAtom, tierAtom } from '../nav/atoms.ts'
-import { nodeById, root, childrenOf, SUTRA_INDEX_TO_NODE } from '../content/loader.ts'
+import { nodeById, root, childrenOf, headlineChildOwners, SUTRA_INDEX_TO_NODE } from '../content/loader.ts'
 import { SUTRA_CHARS } from '../content/sutra.ts'
 import { gridPosition, GLYPH_SIZE } from '../world/paper.ts'
 import { swayAt, swayPhase } from './sway.ts'
@@ -46,6 +46,12 @@ export const APPEAR_DELAY_MS = 500
 interface StageGlyph extends ParticleSource {
   /** この字が属するノード id。紙面の句の範囲外は null */
   owner: string | null
+  /**
+   * この字から潜れる子のノード id（大書の中の入口。`headlineChildOwners`）。
+   * 図を持たないノードでは、大書の一部がそのまま次の大書へ渡るので、
+   * 持ち越しの対応づけは `owner` だけでは取れない。
+   */
+  enters: string | null
   /**
    * ゆらぎの位相（`sway.ts`）。紙面は全文インデックス、大書と図は字から引く。
    * 描画側とまったく同じ種を使うことで、持ち越しの字が出発点でも行き先でも揺れの位置ごと繋がる
@@ -70,12 +76,16 @@ function visibleGlyphs(node: GraphNode): StageGlyph[] {
         position: [x, y] as [number, number],
         size: GLYPH_SIZE,
         owner: SUTRA_INDEX_TO_NODE[index] ?? null,
+        // 紙面では句そのものが入口。owner と同じなので改めて持たない
+        enters: null,
         phase: swayPhase(index),
       }
     })
   }
 
   const { chars, positions, size } = headlineLayout(node.label)
+  // 図を持たないノードでは、大書の中の子の範囲が入口になる（描画側と同じ表を引く）
+  const owners = headlineChildOwners(node)
   const headline: StageGlyph[] = chars.map((char, i) => {
     const [x, y] = positions[i]!
     return {
@@ -83,6 +93,7 @@ function visibleGlyphs(node: GraphNode): StageGlyph[] {
       position: [x, y] as [number, number],
       size,
       owner: node.id,
+      enters: owners[i] ?? null,
       phase: swayPhase(char.codePointAt(0) ?? 0),
     }
   })
@@ -96,6 +107,7 @@ function visibleGlyphs(node: GraphNode): StageGlyph[] {
         position: [DIAGRAM_X + item.position[0] + dx, item.position[1] + dy] as [number, number],
         size: item.size,
         owner: item.node.id,
+        enters: null,
         phase: swayPhase(char.codePointAt(0) ?? 0),
       }
     })
@@ -112,16 +124,27 @@ interface CarryPair {
 }
 
 /**
+ * その字が `pivot`（＝深い側のノード）のものか。
+ *
+ * 浅い側では、図の中の子（`owner`）か、図を持たないノードの大書の中の入口（`enters`）。
+ * 深い側では、その大書そのもの（`owner`）。どちらの側から見ても同じ 1 つの判定で拾える。
+ */
+function belongsTo(glyph: StageGlyph, pivot: string): boolean {
+  return glyph.owner === pivot || glyph.enters === pivot
+}
+
+/**
  * 持ち越される字の対応づけ。
  *
  * `pivot` は深い側のノード（潜るなら行き先、戻るなら出発点）。その字が、
- * 浅い側では図の中の子として、深い側では大書として、同じ順に並んでいる。
+ * 浅い側では図の中の子（あるいは大書の中の子の範囲）として、深い側では大書として、
+ * 同じ順に並んでいる。
  * 数が合わないときは対応が取れないので持ち越しを諦める（全部が粒子になる）。
  */
 function carryPairs(before: StageGlyph[], after: StageGlyph[], pivot: string | null): CarryPair[] {
   if (!pivot) return []
-  const from = before.filter((glyph) => glyph.owner === pivot)
-  const to = after.filter((glyph) => glyph.owner === pivot)
+  const from = before.filter((glyph) => belongsTo(glyph, pivot))
+  const to = after.filter((glyph) => belongsTo(glyph, pivot))
   if (from.length === 0 || from.length !== to.length) return []
   return from.map((glyph, i) => ({ char: glyph.char, from: glyph, to: to[i]! }))
 }
@@ -285,7 +308,7 @@ export function Transition() {
     const survives = pairs.length > 0 ? pivot : null
     setRun({
       mode,
-      particles: stage.filter((glyph) => glyph.owner !== survives),
+      particles: stage.filter((glyph) => !survives || !belongsTo(glyph, survives)),
       carried: pairs,
       at: performance.now(),
     })

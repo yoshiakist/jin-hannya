@@ -41,6 +41,7 @@ import {
   type DiagramItem,
 } from '../world/node-layout.ts'
 import { navAtom, currentNodeAtom, childNodesAtom, acceptsInputAtom } from '../nav/atoms.ts'
+import { headlineChildOwners } from '../content/loader.ts'
 import { labelText, type GraphNode } from '../content/schema.ts'
 
 /** 滲みの最大の濃さ。広がりは距離場が決めるので、ここで持つのは強さだけ */
@@ -59,9 +60,29 @@ export function NodeStage() {
   )
 }
 
-/** 現在ノードの大書。縦組みで、長い句は左へ折り返す */
+/**
+ * 現在ノードの大書。縦組みで、長い句は左へ折り返す。
+ *
+ * 図を持たないノードでは、**大書そのものが子への入口**になる（`headlineChildOwners`）。
+ * 子の `range` にあたる字だけが hover で琥珀に光り、クリックで一段潜る。
+ * L0 の紙面で句の範囲だけが光るのと同じ表現を、そのまま大書へ持ち込んだもの。
+ */
 function Headline({ node }: { node: GraphNode }) {
   const { chars, positions, size } = useMemo(() => headlineLayout(node.label), [node.label])
+  const owners = useMemo(() => headlineChildOwners(node), [node])
+  const hoveredId = useAtomValue(navAtom).hoveredId
+
+  /** 入口ごとに、その子が占める字の位置。列をまたいでも 1 つの入口として扱える */
+  const gates = useMemo(() => {
+    const byChild = new Map<string, [number, number, number][]>()
+    owners.forEach((id, i) => {
+      if (!id) return
+      const cells = byChild.get(id)
+      if (cells) cells.push(positions[i]!)
+      else byChild.set(id, [positions[i]!])
+    })
+    return [...byChild.entries()]
+  }, [owners, positions])
 
   return (
     <group>
@@ -72,9 +93,55 @@ function Headline({ node }: { node: GraphNode }) {
           position={positions[i]!}
           size={size}
           color={INK}
+          focused={owners[i] !== null && owners[i] === hoveredId}
           // 潜って来た／これから戻る字。遷移では薄れず、図の位置とのあいだを動く
           owner={node.id}
+          // 一段深くへ潜るときは、この字がそのまま次の大書へ渡る
+          enters={owners[i] ?? undefined}
         />
+      ))}
+      {gates.map(([id, cells]) => (
+        <HeadlineGate key={`gate-${id}`} id={id} cells={cells} size={size} />
+      ))}
+    </group>
+  )
+}
+
+/**
+ * 大書の中の入口 1 つぶんの当たり判定。
+ * 字の上へ透明な板を置くだけで、光らせるのは `Headline` 側の `focused`。
+ * `visible={false}` だとレイキャストの対象から外れるため、透明にして残す。
+ */
+function HeadlineGate({
+  id,
+  cells,
+  size,
+}: {
+  id: string
+  cells: [number, number, number][]
+  size: number
+}) {
+  const dispatch = useSetAtom(navAtom)
+  const accepts = useAtomValue(acceptsInputAtom)
+
+  return (
+    <group
+      onPointerOver={(event) => {
+        event.stopPropagation()
+        if (accepts) dispatch({ type: 'hover', id })
+      }}
+      onPointerOut={() => accepts && dispatch({ type: 'hover', id: null })}
+      onClick={(event) => {
+        event.stopPropagation()
+        if (accepts) dispatch({ type: 'enter', id })
+      }}
+    >
+      {cells.map(([x, y], i) => (
+        <mesh key={i} position={[x, y, 0.1]}>
+          {/* 升は字面ぴったり。縦は隙間なく繋がり、横は列のあいだで切れる */}
+          <planeGeometry args={[size, size]} />
+          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+        </mesh>
       ))}
     </group>
   )
@@ -243,6 +310,7 @@ export function Glyph({
   opacity = 1,
   focused = false,
   owner,
+  enters,
   swaySize = size,
 }: {
   char: string
@@ -259,6 +327,11 @@ export function Glyph({
   focused?: boolean
   /** この字が属するノード id。遷移で持ち越される側かどうかの判定に使う */
   owner?: string
+  /**
+   * この字から潜れる子のノード id（大書の中の入口）。
+   * 持ち越しは深い側のノードで決まるので、潜るときは `owner` ではなくこちらが一致する。
+   */
+  enters?: string
 }) {
   const geometry = useMemo(() => glyphGeometry(char), [char])
   const groupRef = useRef<Group>(null)
@@ -291,8 +364,10 @@ export function Glyph({
   const phase = useMemo(() => swayPhase(char.codePointAt(0) ?? 0), [char])
   useFrame(({ clock }, delta) => {
     // 持ち越される字は遷移中こちらでは描かない（Transition が動かしながら描く）。
-    // 相ではなく id の一致で決まるので、React の再レンダーを待たずフレームごとに引く
-    ink.persist.value = owner !== undefined && owner === carriedNodeId() ? 1 : 0
+    // 相ではなく id の一致で決まるので、React の再レンダーを待たずフレームごとに引く。
+    // 浅い側へ戻るなら自分の owner が、深い側へ潜るなら大書の中の入口（enters）が一致する
+    const carried = carriedNodeId()
+    ink.persist.value = carried !== null && (owner === carried || enters === carried) ? 1 : 0
     focusAmount.current = approach(focusAmount.current, focused ? 1 : 0, delta)
     // 墨から琥珀へじわりと寄せ、同じ量で滲みを焚く
     ink.color.value.copy(color).lerp(FOCUS, focusAmount.current)
