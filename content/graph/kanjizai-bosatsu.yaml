@@ -1,0 +1,11 @@
+id: kanjizai-bosatsu
+kind: term
+label: 観自在菩薩
+reading: かんじざい ぼさつ
+sanskrit:
+  text: Avalokiteśvara
+  kana: アヴァローキテーシュヴァラ
+summary: 世界をありのままに、自由自在に観察し人々を救う修行者
+parent: kanjizai-to-issaikuyaku
+layout: none
+range: [10, 15]
