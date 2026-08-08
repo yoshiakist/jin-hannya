@@ -128,7 +128,7 @@ body {
 
 .overlay__top {
   position: absolute;
-  top: clamp(12px, 3vh, 28px);
+  top: clamp(12px, 3dvh, 28px);
   right: clamp(12px, 3vw, 32px);
   display: flex;
   align-items: center;
@@ -140,15 +140,15 @@ body {
    「左端を大書の右端に置く」にする。列が増えても大書に被らず、画面の端へ伸びていく */
 .overlay__reading {
   position: absolute;
-  top: 12vh;
+  top: 12dvh;
   right: calc(var(--headline-right) - var(--reading-gap));
   transform: translateX(calc(100% + var(--node-pan-px)));
   max-width: max(0px, calc(var(--headline-right) - var(--reading-gap)));
-  font-size: clamp(16px, 1.8vh, 20px);
+  font-size: clamp(16px, 1.8dvh, 20px);
   letter-spacing: 0.5em;
   color: var(--text-dim);
   line-height: 1.8;
-  height: 76vh;
+  height: 76dvh;
   overflow: hidden;
   font-weight: 600;
 
@@ -188,12 +188,12 @@ body {
 .overlay__summary {
   position: absolute;
   /* 天は大きく空け、下寄りに組む */
-  top: 35vh;
+  top: 35dvh;
   right: var(--summary-right);
   transform: translateX(var(--node-pan-px));
   writing-mode: vertical-rl;
-  max-height: 53vh;
-  font-size: clamp(18px, 2.25vh, 23px);
+  max-height: 53dvh;
+  font-size: clamp(18px, 2.25dvh, 23px);
   line-height: 2.1;
   letter-spacing: 0.12em;
   color: var(--text);
@@ -219,16 +219,16 @@ body {
 /* 長文解説。縦書き多列、列は右から左へ進む。書き出しはサマリーのさらに左 */
 .overlay__doc {
   position: absolute;
-  top: 10vh;
+  top: 10dvh;
   right: var(--doc-right);
   /* 列数は本文の量が決める。狭い画面では左へはみ出し、その先はドラッグパンで送る
      （README「画面外へはみ出してよい」）。切り詰めも段組みの変更もしない */
   width: max-content;
-  height: 78vh;
+  height: 78dvh;
   transform: translateX(var(--node-pan-px));
   writing-mode: vertical-rl;
   column-gap: 2.4em;
-  font-size: clamp(18px, 1.85vh, 22px);
+  font-size: clamp(18px, 1.85dvh, 22px);
   line-height: 2.15;
   letter-spacing: 0.08em;
   color: var(--text);
@@ -285,9 +285,9 @@ body {
    （Overlay.tsx の `scatter`）。ここは受け皿だけを用意する */
 .overlay__related {
   position: absolute;
-  top: 14vh;
+  top: 14dvh;
   right: var(--related-right);
-  height: 68vh;
+  height: 68dvh;
   transform: translateX(var(--node-pan-px));
   /* 右から左へ読む並びに合わせ、見出しを右端に置く（DOM 順は見出しが先） */
   display: flex;
@@ -299,7 +299,7 @@ body {
 .overlay__related-heading {
   margin: 0;
   writing-mode: vertical-rl;
-  font-size: clamp(13px, 1.4vh, 16px);
+  font-size: clamp(13px, 1.4dvh, 16px);
   letter-spacing: 0.42em;
   color: var(--text-dim);
   opacity: 0.75;
@@ -308,7 +308,7 @@ body {
 /* 語を散らす面。幅は固定し、中の語は右端からの距離（--x）で置く */
 .overlay__related-cloud {
   position: relative;
-  width: clamp(150px, 21vh, 260px);
+  width: clamp(150px, 21dvh, 260px);
   height: 100%;
 }
 
@@ -318,7 +318,7 @@ body {
   top: var(--y);
   /* 1 字の大きさ。字面は SVG なので書体の字面率に引きずられない。
      大書ほどではないが、行ける語として拾えるだけの大きさを取る */
-  --glyph-size: clamp(24px, 2.8vh, 31px);
+  --glyph-size: clamp(24px, 2.8dvh, 31px);
   display: flex;
   /* 縦組み。字は 1 枚ずつ積むので writing-mode ではなく列で並べる */
   flex-direction: column;
@@ -400,7 +400,7 @@ body {
 
 .breadcrumb {
   position: absolute;
-  top: 6vh;
+  top: 6dvh;
   left: clamp(14px, 2.2vw, 30px);
   display: flex;
   align-items: flex-start;
@@ -410,12 +410,12 @@ body {
   z-index: 2;
   /* 筆文字ではなく通常書体。大書との役割を明確に分ける */
   font-family: var(--sans);
-  font-size: clamp(16px, 1.6vh, 18px);
+  font-size: clamp(16px, 1.6dvh, 18px);
 }
 
 .breadcrumb__rule {
   width: 1px;
-  min-height: 26vh;
+  min-height: 26dvh;
   background: linear-gradient(to bottom, rgb(242 240 236 / 0.55), rgb(242 240 236 / 0.08));
 }
 
@@ -505,7 +505,7 @@ body {
 .left-arrow {
   position: absolute;
   left: clamp(20px, 4vw, 56px);
-  bottom: clamp(20px, 5vh, 56px);
+  bottom: clamp(20px, 5dvh, 56px);
   color: var(--ink);
   opacity: 0.25;
   pointer-events: none;
@@ -537,7 +537,7 @@ body {
   align-items: center;
   gap: 0.34em;
   padding-inline: 6vw;
-  font-size: clamp(15px, 3.4vh, 24px);
+  font-size: clamp(15px, 3.4dvh, 24px);
   /* 紙面は画面より広い。左へはみ出したぶんはパン量で送る */
   transform: translate3d(var(--pan-px, 0px), 0, 0);
   transition: transform 0.05s linear;
