@@ -141,7 +141,7 @@ export const particleScaleAtom = atom(1)
 export const bgmVolumeAtom = atom(0.35)
 export const mutedAtom = atom(false)
 
-/** 初回のユーザー操作で音声を開始したか（自動再生制限への対応） */
+/** BGM が実際に鳴り始めたか。自動再生が弾かれた環境では最初の操作まで false のまま */
 export const audioStartedAtom = atom(false)
 
 /** 読み上げ再生中のノード id。ボタンの状態表示に使う */

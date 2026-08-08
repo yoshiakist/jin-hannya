@@ -10,6 +10,7 @@ import {
   isRootAtom,
   audioStartedAtom,
   bgmVolumeAtom,
+  mutedAtom,
   currentNodeAtom,
   markVisitedAtom,
 } from './nav/atoms.ts'
@@ -26,7 +27,7 @@ export function App() {
   const containerRef = useRef<HTMLDivElement>(null)
 
   useHashRouting()
-  useFirstGestureAudio(containerRef)
+  useAutoStartAudio(containerRef)
   useWooshOnTransition(phase)
   useVisitLog()
 
@@ -55,28 +56,44 @@ export function App() {
 }
 
 /**
- * 自動再生制限への対応。最初のクリック／タップで音を開始する。
- * README「初回はユーザー操作をトリガに開始する」より。
+ * 開いた時点で音を始める。自動再生が許されていない環境ではここで弾かれるので、
+ * そのときだけ最初のクリック／タップ／キー入力を待って始め直す。
  */
-function useFirstGestureAudio(target: React.RefObject<HTMLElement | null>): void {
+function useAutoStartAudio(target: React.RefObject<HTMLElement | null>): void {
   const setStarted = useSetAtom(audioStartedAtom)
   const volume = useAtomValue(bgmVolumeAtom)
-  const volumeRef = useRef(volume)
-  volumeRef.current = volume
+  const muted = useAtomValue(mutedAtom)
+  const settingsRef = useRef({ volume, muted })
+  settingsRef.current = { volume, muted }
 
   useEffect(() => {
     const element = target.current
     if (!element) return
-    const onFirst = () => {
-      void startAudio(volumeRef.current).then(() => setStarted(true))
-      element.removeEventListener('pointerdown', onFirst)
-      element.removeEventListener('keydown', onFirst)
+    let disposed = false
+
+    const attempt = async () => {
+      const { volume, muted } = settingsRef.current
+      const ok = await startAudio(volume, muted)
+      if (ok && !disposed) {
+        setStarted(true)
+        detach()
+      }
+      return ok
     }
-    element.addEventListener('pointerdown', onFirst)
-    element.addEventListener('keydown', onFirst)
+    const onGesture = () => void attempt()
+    const detach = () => {
+      element.removeEventListener('pointerdown', onGesture)
+      element.removeEventListener('keydown', onGesture)
+    }
+
+    // まず無条件に試す。弾かれた場合だけ操作待ちに落とす
+    element.addEventListener('pointerdown', onGesture)
+    element.addEventListener('keydown', onGesture)
+    void attempt()
+
     return () => {
-      element.removeEventListener('pointerdown', onFirst)
-      element.removeEventListener('keydown', onFirst)
+      disposed = true
+      detach()
     }
   }, [target, setStarted])
 }

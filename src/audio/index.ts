@@ -69,16 +69,37 @@ function ensureContext(): AudioContext {
 }
 
 /**
- * 初回のユーザー操作から呼ぶ。自動再生制限があるため、これより前に音は出せない。
- * 冪等なので、最初のクリック／タップのハンドラから素直に呼んでよい。
+ * 読み込み直後にまず 1 度呼び、弾かれたら最初のユーザー操作でもう 1 度呼ぶ。
+ * 自動再生を許す環境（既に触ったことのあるサイトなど）ではそのまま鳴り、
+ * 制限が掛かっている環境では `false` を返すので、呼び出し側が操作待ちに切り替える。
+ * 冪等なので何度呼んでもよい。
  */
-export async function startAudio(volume: number): Promise<void> {
+export async function startAudio(volume: number, muted: boolean): Promise<boolean> {
   const ctx = ensureContext()
-  if (ctx.state === 'suspended') await ctx.resume()
+  if (ctx.state !== 'running') {
+    // 自動再生制限下では reject する。ここで落とさず、状態を見て判断する
+    await ctx.resume().catch(() => {})
+  }
   setBgmVolume(volume)
+  setMuted(muted)
+  if (ctx.state !== 'running') return false
 
   if (!bgmStop) {
-    bgmStop = BGM_STRATEGY === 'gapless' ? await startGaplessBgm(ctx) : startStreamingBgm(ctx)
+    if (BGM_STRATEGY === 'gapless') {
+      bgmStop = await startGaplessBgm(ctx)
+    } else {
+      // <audio> の再生は AudioContext とは別に弾かれうる。
+      // 弾かれたら要素ごと捨てて、次の呼び出しで作り直す
+      const bgm = startStreamingBgm(ctx)
+      bgmStop = bgm.stop
+      try {
+        await bgm.ready
+      } catch {
+        bgm.stop()
+        bgmStop = null
+        return false
+      }
+    }
   }
   if (!wooshBuffer) {
     void fetch(WOOSH_URL)
@@ -91,6 +112,7 @@ export async function startAudio(volume: number): Promise<void> {
         // 効果音が無くても本体は成立する。読み込み失敗は握りつぶす
       })
   }
+  return true
 }
 
 /** 案 A: 全長デコード + AudioBufferSourceNode.loop。サンプル精度でギャップレス */
@@ -117,7 +139,7 @@ async function startGaplessBgm(ctx: AudioContext): Promise<() => void> {
  * 案 B: <audio> 2 本を末尾でクロスフェードする。
  * ストリーミングのまま繋げるが、同じ地点へ戻る感覚は案 A より薄い。
  */
-function startStreamingBgm(ctx: AudioContext): () => void {
+function startStreamingBgm(ctx: AudioContext): { stop: () => void; ready: Promise<void> } {
   const elements = [new Audio(BGM_URL), new Audio(BGM_URL)]
   const gains = elements.map((element) => {
     element.crossOrigin = 'anonymous'
@@ -131,12 +153,20 @@ function startStreamingBgm(ctx: AudioContext): () => void {
 
   let active = 0
   let timer: ReturnType<typeof setTimeout> | undefined
+  let ready: Promise<void> = Promise.resolve()
+  let first = true
 
   const play = (index: number) => {
     const element = elements[index]!
     const gain = gains[index]!
     element.currentTime = 0
-    void element.play()
+    const playing = element.play()
+    // 最初の 1 本だけ、再生が通ったかを呼び出し側へ渡す（自動再生の可否判定に使う）。
+    // ループ後の切り替えは既に鳴っている以上、弾かれない
+    if (first) {
+      first = false
+      ready = playing ?? Promise.resolve()
+    }
 
     const now = ctx.currentTime
     gain.gain.cancelScheduledValues(now)
@@ -168,9 +198,12 @@ function startStreamingBgm(ctx: AudioContext): () => void {
 
   play(active)
 
-  return () => {
-    clearTimeout(timer)
-    for (const element of elements) element.pause()
+  return {
+    ready,
+    stop: () => {
+      clearTimeout(timer)
+      for (const element of elements) element.pause()
+    },
   }
 }
 
