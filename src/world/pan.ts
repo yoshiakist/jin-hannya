@@ -14,6 +14,7 @@
 import { atom, useAtomValue, useSetAtom, useStore, type Setter } from 'jotai'
 import { useEffect, useRef } from 'react'
 import { CELL_X, PAPER_WIDTH, VIEW_HEIGHT } from './paper.ts'
+import { ease } from './ease.ts'
 
 export interface PanBounds {
   /** 最も左まで送った状態のカメラ x */
@@ -159,17 +160,40 @@ export const nodePanTargetAtom = atom(
   (get) => get(nodePanTargetRaw),
   (get, set, update: number | ((previous: number) => number)) => {
     const next = typeof update === 'function' ? update(get(nodePanTargetRaw)) : update
-    set(nodePanTargetRaw, Math.min(0, Math.max(-get(nodePanRangeRaw), next)))
+    const clamped = Math.min(0, Math.max(-get(nodePanRangeRaw), next))
+    // 行き先が動いたら遷移の戻しは畳む。指の行き先へはばねで追う（尺の決まった動きに割り込ませない）
+    if (clamped !== get(nodePanTargetRaw)) set(nodePanFlightRaw, null)
+    set(nodePanTargetRaw, clamped)
   },
 )
 
 /** いま描くべきパン量（ワールド単位）。カメラも DOM もこの 1 つだけを読む */
 export const nodePanXAtom = atom((get) => get(nodePanRaw))
 
-/** ばねを挟まずその場で基準の構図へ戻す。ノードが変わったときに使う */
-export const resetNodePanAtom = atom(null, (_get, set) => {
+/**
+ * 送っていたぶんを基準の構図へ戻す動き。ノードが変わったときに起きる。
+ * `durationMs` を渡すと遷移と同じ尺・同じカーブで戻し、渡さなければばねに任せる。
+ */
+const nodePanFlightRaw = atom<{ at: number; from: number; durationMs: number } | null>(null)
+
+/**
+ * 基準の構図へ戻す。ノードが変わったときに使う。
+ *
+ * その場で 0 を書いてはいけない。GPU 側はカメラが遷移の尺で滑らかに動くので、
+ * DOM の本文だけが遷移の頭で横へ飛び、同じ値を読むはずの 2 層が別々に動いて見える。
+ *
+ * 遷移の尺を渡された場合はカメラと同じ時計・同じカーブで戻す。カメラは出発点
+ * （＝送っていた位置）から行き先の構図へ ease で動くので、送りぶんはその裏で
+ * `from * (1 - ease(t))` として消える。DOM も同じ式で戻せば 2 層がぴたりと重なる。
+ */
+export const settleNodePanAtom = atom(null, (get, set, durationMs?: number) => {
   set(nodePanTargetRaw, 0)
-  set(nodePanRaw, 0)
+  const from = get(nodePanRaw)
+  if (!durationMs || Math.abs(from) < NODE_PAN_EPSILON) {
+    set(nodePanFlightRaw, null)
+    return
+  }
+  set(nodePanFlightRaw, { at: performance.now(), from, durationMs })
 })
 
 /** 左へ送れる幅（ワールド単位・0 以上）。ノードや画面寸法が変わるたび Overlay が入れ直す */
@@ -194,6 +218,8 @@ const NODE_PAN_EPSILON = 1e-4
 
 /**
  * L1 以降のパンのばね。行き先へ向かって毎フレーム詰める。
+ * 遷移で戻すあいだ（`settleNodePanAtom` に尺を渡したとき）だけは、ばねではなく
+ * 遷移と同じ時計・同じカーブで進める。
  *
  * カメラではなく atom を動かすのが要点で、GPU レイヤーの大書と DOM の本文が
  * **同じ値**を読む以上、両者に速度差が生まれない。App が 1 度だけ取り付ける。
@@ -202,6 +228,8 @@ export function useNodePanSpring(): void {
   const store = useStore()
   // 行き先が動いたらばねを起こす。値そのものはフレームごとに store から読む
   const target = useAtomValue(nodePanTargetAtom)
+  // 遷移の戻しも起こす。行き先はどちらも 0 なので、これを見ないと動き出さないことがある
+  const flight = useAtomValue(nodePanFlightRaw)
 
   useEffect(() => {
     const settled = () =>
@@ -211,8 +239,8 @@ export function useNodePanSpring(): void {
     let raf = 0
     let last = performance.now()
     const tick = (now: number) => {
-      // 行き先も現在位置も毎フレーム読み直す。ノードが変わったときの即時リセット
-      // （`resetNodePanAtom`）と競っても、取り残された 1 フレームが古い値を書き戻さない
+      // 行き先も現在位置も毎フレーム読み直す。ノードが変わったときの戻し
+      // （`settleNodePanAtom`）と競っても、取り残された 1 フレームが古い値を書き戻さない
       if (settled()) return
       // タブが戻ったときの巨大な delta で飛ばさないよう頭を抑える。
       // 下も抑える: rAF の時刻はフレームの開始時刻なので、直前に読んだ performance.now() より
@@ -221,14 +249,24 @@ export function useNodePanSpring(): void {
       last = now
       const goal = store.get(nodePanTargetAtom)
       const current = store.get(nodePanXAtom)
-      const next = current + (goal - current) * (1 - Math.exp(-delta * NODE_PAN_FOLLOW))
+      const run = store.get(nodePanFlightRaw)
+      let next: number
+      if (run) {
+        // 遷移の戻し。出発点と時計を握っているので、経過時間から位置を直に出す。
+        // 行き先は毎フレーム読む（ドラッグで動いても置いていかれない）
+        const t = Math.min(1, (now - run.at) / run.durationMs)
+        next = run.from + (goal - run.from) * ease(t)
+        if (t >= 1) store.set(nodePanFlightRaw, null)
+      } else {
+        next = current + (goal - current) * (1 - Math.exp(-delta * NODE_PAN_FOLLOW))
+      }
       store.set(nodePanRaw, Math.abs(goal - next) < NODE_PAN_EPSILON ? goal : next)
       if (settled()) return
       raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [store, target])
+  }, [store, target, flight])
 }
 
 /** 画面 1px が何ワールド単位か。視野高が VIEW_HEIGHT / zoom に固定されているので高さから決まる */

@@ -21,12 +21,12 @@ import {
   leavingToRootAtom,
 } from '../nav/atoms.ts'
 import { overlayInsets, DOC_EDGE_PX } from '../world/node-layout.ts'
-import { nodePanXAtom, nodePanRangeAtom, resetNodePanAtom, unitsPerPixel } from '../world/pan.ts'
+import { nodePanXAtom, nodePanRangeAtom, settleNodePanAtom, unitsPerPixel } from '../world/pan.ts'
 import { VIEW_HEIGHT } from '../world/paper.ts'
 import { labelText, type GraphNode } from '../content/schema.ts'
 import { parseRuby } from '../content/ruby.ts'
 import { parseBlocks, startsWithBracket } from '../content/blocks.ts'
-import { APPEAR_DELAY_MS } from '../scene/Transition.tsx'
+import { APPEAR_DELAY_MS, TRANSITION_MS } from '../scene/Transition.tsx'
 import { SpeakButton } from './SpeakButton.tsx'
 import { AudioControls } from './AudioControls.tsx'
 import { LeftArrow } from './LeftArrow.tsx'
@@ -252,15 +252,16 @@ function useMeasuredElement(): Measured {
  */
 function useNodePan(destinationId: string, elements: (HTMLElement | null)[], deps: unknown[]): number {
   const pan = useAtomValue(nodePanXAtom)
-  const reset = useSetAtom(resetNodePanAtom)
+  const settle = useSetAtom(settleNodePanAtom)
   const setRange = useSetAtom(nodePanRangeAtom)
 
   // ノードが変わったら基準の構図へ戻す。行き先が決まった時点（遷移の始まり）で戻すので、
   // 演出中のカメラは最初から新しいノードの構図へ向かう。
-  // ここはばねを挟まない（送り戻しの動きが潜る演出に重なると読み取れない）
+  // 戻すのは演出と同じ尺で（`settle(TRANSITION_MS)`）。その場で 0 を書くと、GPU 側はカメラが
+  // 滑らかに動くのに DOM の本文だけが遷移の頭で横へ飛び、同じ値を読む 2 層が別々に動いて見える
   useEffect(() => {
-    reset()
-  }, [destinationId, reset])
+    settle(TRANSITION_MS)
+  }, [destinationId, settle])
 
   useLayoutEffect(() => {
     const lefts = elements.filter((element) => element !== null).map((element) => element.offsetLeft)

@@ -104,7 +104,10 @@ function CameraRig() {
     // 遷移中は行き先の側の値を見る（根へ戻るなら送っていた位置、潜るなら大書が収まる位置）
     // L1 以降は基準の構図（nodeX）にドラッグのぶん（nodePan）を足す。左へ送ると
     // 画面の左へはみ出した本文が入ってくる
-    target.current.x = toRoot ? panX : nodeX + nodePan
+    // 遷移中は送りぶん（nodePan）を足さない。出発点（flight.x）が送っていた位置そのものなので、
+    // 行き先へ ease で寄せるだけで送りぶんは自然に消える（`settleNodePanAtom` と同じ減り方）。
+    // ここで足すと減っていく値をさらに ease で掛けることになり、道中で膨らんで戻る
+    target.current.x = toRoot ? panX : nodeX + (flight.current ? 0 : nodePan)
     target.current.y = toRoot ? panY : 0
     target.current.zoom = toRoot ? zoom : 1
     // 縦 16 升ぶんが等倍でちょうど画面高に収まる。はみ出すのは横方向のみ

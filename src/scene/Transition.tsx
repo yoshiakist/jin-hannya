@@ -29,6 +29,7 @@ import { nodeById, root, childrenOf, headlineChildOwners, SUTRA_INDEX_TO_NODE } 
 import { SUTRA_CHARS } from '../content/sutra.ts'
 import { gridPosition, GLYPH_SIZE } from '../world/paper.ts'
 import { swayAt, swayPhase } from './sway.ts'
+import { ease } from '../world/ease.ts'
 import { labelText, type GraphNode } from '../content/schema.ts'
 
 /** 遷移演出の尺（ミリ秒）。ふんわりと滑らかに接続する */
@@ -151,14 +152,11 @@ function carryPairs(before: StageGlyph[], after: StageGlyph[], pivot: string | n
 
 /**
  * 行きも戻りも滑らかに出入りする補間。等速だと機械が動いて見える。
- * カメラ（`Stage.tsx` の `CameraRig`）も遷移のあいだはこれを使う。持ち越しの字と同じ尺・
- * 同じカーブで動かさないと、ワールド座標では滑らかでも画面上では字が寄り道して見える。
+ * カメラ（`Stage.tsx` の `CameraRig`）も L1 以降のパンの戻し（`world/pan.ts`）も遷移のあいだは
+ * これを使う。持ち越しの字と同じ尺・同じカーブで動かさないと、ワールド座標では滑らかでも
+ * 画面上では字が寄り道して見える。定義は `world/ease.ts`（world/ から読めるように）。
  */
-export function ease(t: number): number {
-  // 5 次（smootherstep）。3 次と違って両端で加速度も 0 になるので、動き出しに角が立たず、
-  // 終わりはぐっと減速しながら行き先へ着地する
-  return t * t * t * (t * (t * 6 - 15) + 10)
-}
+export { ease }
 
 /**
  * 字が現れきるまでの尺（ミリ秒）。
