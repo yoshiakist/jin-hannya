@@ -29,6 +29,7 @@ import {
   approach,
 } from './materials.ts'
 import { carriedNodeId } from './carry.ts'
+import { advancePulse, pulseAt, restartPulse } from './pulse.ts'
 import { swayAt, swayPhase } from './sway.ts'
 import {
   CIRCLE_DIAMETER,
@@ -57,6 +58,11 @@ const CONNECTOR_DOT_OPACITY = 0.7
 export function NodeStage() {
   const node = useAtomValue(currentNodeAtom)
   const children = useAtomValue(childNodesAtom)
+
+  // 入口の呼び水はノードごとに数え直す。時計を進めるのはここ 1 箇所で、
+  // 字は `pulseAt` を読むだけにする（親の useFrame が子より先に回る）
+  useEffect(() => restartPulse(), [node.id])
+  useFrame(({ clock }) => advancePulse(clock.elapsedTime))
 
   return (
     <group>
@@ -92,6 +98,9 @@ function Headline({ node }: { node: GraphNode }) {
     return [...byChild.entries()]
   }, [owners, positions])
 
+  /** 入口の並び順（＝呼び水の灯る順）。大書は読み順そのまま、上の字から灯る */
+  const order = useMemo(() => new Map(gates.map(([id], i) => [id, i])), [gates])
+
   return (
     <group>
       {chars.map((char, i) => (
@@ -102,6 +111,8 @@ function Headline({ node }: { node: GraphNode }) {
           size={size}
           color={INK}
           focused={owners[i] !== null && owners[i] === hoveredId}
+          // 図を持たないノードでは、この字が入口。周期的に琥珀へ灯して押せると知らせる
+          pulseOrder={owners[i] === null ? undefined : order.get(owners[i]!)}
           // 潜って来た／これから戻る字。遷移では薄れず、図の位置とのあいだを動く
           owner={node.id}
           // 一段深くへ潜るときは、この字がそのまま次の大書へ渡る
@@ -223,8 +234,8 @@ function CircleLayout({ node, items }: { node: GraphNode; items: DiagramItem[] }
         // 円相は図の地。振れ幅は中の字に合わせ、輪だけが大きく泳がないようにする
         swaySize={diameter * 0.17}
       />
-      {items.map((item) => (
-        <ChildNode key={item.node.id} item={item} />
+      {items.map((item, i) => (
+        <ChildNode key={item.node.id} item={item} order={i} />
       ))}
     </group>
   )
@@ -254,15 +265,18 @@ function ColumnLayout({ node, items }: { node: GraphNode; items: DiagramItem[] }
             <planeGeometry args={[0.02, gap]} />
           </mesh>
         ))}
-        {items.map((item) => (
-          <ChildNode key={item.node.id} item={item} />
+        {items.map((item, i) => (
+          <ChildNode key={item.node.id} item={item} order={i} />
         ))}
       </group>
     )
 }
 
-/** 図中の子ノード 1 つ。hover で琥珀に発光し、クリックで一段潜る */
-function ChildNode({ item }: { item: DiagramItem }) {
+/**
+ * 図中の子ノード 1 つ。hover で琥珀に発光し、クリックで一段潜る。
+ * `order` は図の中での並び順で、入口の呼び水が灯る順になる（→ `pulse.ts`）。
+ */
+function ChildNode({ item, order }: { item: DiagramItem; order: number }) {
   const { node, size, frame } = item
   const position: [number, number, number] = [item.position[0], item.position[1], 0]
   const dispatch = useSetAtom(navAtom)
@@ -286,7 +300,7 @@ function ChildNode({ item }: { item: DiagramItem }) {
         if (accepts) dispatch({ type: 'enter', id: node.id })
       }}
     >
-      {frame && <RoundedFrame width={width} height={height} focused={hovered} />}
+      {frame && <RoundedFrame width={width} height={height} focused={hovered} pulseOrder={order} />}
       {/* 枠の中では字を横に並べる。縦組みの図では 1 字ずつ縦に積む */}
       {chars.map((char, i) => {
         const [dx, dy] = childCharOffset(i, chars.length, size, frame)
@@ -298,6 +312,8 @@ function ChildNode({ item }: { item: DiagramItem }) {
             size={size}
             color={INK}
             focused={hovered}
+            // 図の中の字も入口。周期的に灯して、押せるものだと知らせる
+            pulseOrder={order}
             // この子へ潜る／この子から戻るときは、ここの字がそのまま大書へ渡る
             owner={node.id}
           />
@@ -318,7 +334,18 @@ function ChildNode({ item }: { item: DiagramItem }) {
  * `<line>` は JSX 上で SVG の line と衝突し、WebGPURenderer は LineLoop を描かないため、
  * THREE.Line を自前で組んで primitive として差し込む。
  */
-function RoundedFrame({ width, height, focused }: { width: number; height: number; focused: boolean }) {
+function RoundedFrame({
+  width,
+  height,
+  focused,
+  pulseOrder,
+}: {
+  width: number
+  height: number
+  focused: boolean
+  /** 入口の呼び水の順番。枠を持つ図では、字と一緒に枠も灯る（hover と同じ扱い） */
+  pulseOrder?: number
+}) {
   const line = useMemo(() => {
     // 角丸半径は高さの約 1/4（img_02 のプロポーション）
     const radius = height / 4
@@ -350,8 +377,10 @@ function RoundedFrame({ width, height, focused }: { width: number; height: numbe
   const amount = useRef(0)
   useFrame((_, delta) => {
     amount.current = approach(amount.current, focused ? 1 : 0, delta)
+    // 触れているあいだは呼び水より必ず明るい（灯りは山でも 1 に届かない）
+    const lit = Math.max(amount.current, pulseOrder === undefined ? 0 : pulseAt(pulseOrder))
     const material = line.material as LineBasicMaterial
-    material.color.copy(STROKE).lerp(FOCUS, amount.current)
+    material.color.copy(STROKE).lerp(FOCUS, lit)
     // 枠は Line なのでノードマテリアルを持てない。同じ値を CPU 側から掛ける
     material.opacity = 0.75 * nodeOpacityValue()
   })
@@ -367,6 +396,7 @@ export function Glyph({
   color,
   opacity = 1,
   focused = false,
+  pulseOrder,
   owner,
   enters,
   swaySize = size,
@@ -383,6 +413,11 @@ export function Glyph({
   swaySize?: number
   /** 琥珀への発色と滲み。切り替えは瞬時ではなく FOCUS_FADE 秒かけて渡る */
   focused?: boolean
+  /**
+   * 子への入口である字だけが持つ、呼び水の順番（→ `pulse.ts`）。
+   * 触られていなくても周期的に琥珀へ灯り、押せる字だと知らせる。
+   */
+  pulseOrder?: number
   /** この字が属するノード id。遷移で持ち越される側かどうかの判定に使う */
   owner?: string
   /**
@@ -427,9 +462,11 @@ export function Glyph({
     const carried = carriedNodeId()
     ink.persist.value = carried !== null && (owner === carried || enters === carried) ? 1 : 0
     focusAmount.current = approach(focusAmount.current, focused ? 1 : 0, delta)
+    // hover と呼び水は同じ琥珀。濃いほうを採り、触れているあいだは必ず hover が勝つ
+    const lit = Math.max(focusAmount.current, pulseOrder === undefined ? 0 : pulseAt(pulseOrder))
     // 墨から琥珀へじわりと寄せ、同じ量で滲みを焚く
-    ink.color.value.copy(color).lerp(FOCUS, focusAmount.current)
-    glow.amount.value = focusAmount.current * GLOW_OPACITY
+    ink.color.value.copy(color).lerp(FOCUS, lit)
+    glow.amount.value = lit * GLOW_OPACITY
 
     const group = groupRef.current
     if (!group) return
