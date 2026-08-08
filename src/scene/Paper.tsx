@@ -36,6 +36,7 @@ import {
   REVEAL_TOTAL,
 } from './materials.ts'
 import { CELL_X, CELL_Y, GLYPH_SIZE, gridPosition } from '../world/paper.ts'
+import { isGestureClick } from '../world/pan.ts'
 import { navAtom, acceptsInputAtom, visitedIndicesAtom } from '../nav/atoms.ts'
 import { SUTRA_INDEX_TO_NODE } from '../content/loader.ts'
 import { carriedNodeId } from './carry.ts'
@@ -330,7 +331,7 @@ function HoverPlane({ indexToNode, live }: { indexToNode: readonly (string | nul
   }
 
   const onClick = (event: ThreeEvent<MouseEvent>) => {
-    if (!accepts) return
+    if (!accepts || isGestureClick()) return
     const index = indexUnder(event.point.x, event.point.y)
     const id = index === null ? null : indexToNode[index]
     if (id) dispatch({ type: 'enter', id })

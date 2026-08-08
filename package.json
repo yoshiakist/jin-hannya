@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "npm run content:build && vite",
+    "host": "npm run content:build && vite --host",
     "build": "npm run content:validate && npm run content:build && tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",

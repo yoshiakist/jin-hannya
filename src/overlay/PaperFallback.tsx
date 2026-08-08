@@ -11,6 +11,7 @@ import { useAtomValue, useSetAtom } from 'jotai'
 import { SUTRA_CHARS, cellOf } from '../content/sutra.ts'
 import { navAtom, acceptsInputAtom, completedIdsAtom } from '../nav/atoms.ts'
 import { root, childrenOf } from '../content/loader.ts'
+import { isGestureClick } from '../world/pan.ts'
 
 export function PaperFallback() {
   const dispatch = useSetAtom(navAtom)
@@ -51,7 +52,7 @@ export function PaperFallback() {
                 key={index}
                 className={`paper-fallback__char${visited ? ' is-visited' : ''}${focused ? ' is-focused' : ''}${hoveredId && !focused ? ' is-dimmed' : ''}`}
                 onPointerEnter={() => accepts && dispatch({ type: 'hover', id: id ?? null })}
-                onClick={() => accepts && id && dispatch({ type: 'enter', id })}
+                onClick={() => accepts && id && !isGestureClick() && dispatch({ type: 'enter', id })}
               >
                 {char}
               </span>

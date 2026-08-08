@@ -25,6 +25,7 @@
 | コマンド | 内容 |
 |---|---|
 | `npm run dev` | グリフ前計算 → 開発サーバ |
+| `npm run host` | 同上を LAN に公開（実機確認用。WSL は `networkingMode=mirrored`） |
 | `npm run build` | グラフ検証 → グリフ前計算 → `tsc --noEmit` → 本番ビルド |
 | `npm run content:validate` | `content/` の静的検証のみ |
 | `npm run content:build` | グリフ前計算のみ（`src/generated/` と `public/glyphs/` を出す） |

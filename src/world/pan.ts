@@ -358,10 +358,14 @@ export function usePanZoomGesture(
     }
 
     const onPointerDown = (event: PointerEvent) => {
+      // 1 本目が触れたところで印を倒す。ここまでにクリックは配り終わっている
+      if (pointers.size === 0) gestureConsumed = false
       pointers.set(event.pointerId, { x: event.clientX, y: event.clientY })
       if (pointers.size === 2) {
         // 2 本目が触れた時点でドラッグを畳み、ピンチへ切り替える
         drag = null
+        // 指が 2 本あった時点でタップではない。離しぎわのクリックは捨てる
+        gestureConsumed = true
         const pair = pinchPair(pointers)
         pinchDistance = pair ? Math.hypot(pair[0].x - pair[1].x, pair[0].y - pair[1].y) : null
         return
@@ -398,6 +402,8 @@ export function usePanZoomGesture(
       state.travelled += Math.abs(dx) + Math.abs(dy)
       // 明確にドラッグと判った時点で初めて捕捉する。それ未満はタップとして扱う
       if (state.travelled < CLICK_SLOP_PX) return
+      // 送ったならタップではない。離しぎわのクリックは捨てる
+      gestureConsumed = true
       if (!element.hasPointerCapture(event.pointerId)) element.setPointerCapture(event.pointerId)
       panBy(dx, dy)
     }
@@ -442,6 +448,24 @@ function pinchPair(pointers: Map<number, Point>): [Point, Point] | null {
 
 /** ドラッグ距離がこの px 未満ならクリックとして扱う（パンとタップの弁別） */
 export const CLICK_SLOP_PX = 6
+
+/**
+ * 直前のポインタ列がパン・ピンチだったか。
+ *
+ * 指を離した瞬間、ブラウザは（触っていた指が 2 本でも）クリックを 1 つ投げてくる。
+ * ピンチで拡大しただけなのに、その中点にあった字へ潜ってしまうのはこれが理由。
+ *
+ * **時間で締め出さない。** 「操作の直後 N ミリ秒はクリック不可」は尺の当てずっぽうで、
+ * 遅い指では素通りし、速い指ではタップを食う。代わりにポインタ列そのものへ印を付ける:
+ * パンやピンチと判った時点で立て、**次に 1 本目の指が触れるまで**倒さない。
+ * クリックは必ず pointerup の後・次の pointerdown の前に届くので取りこぼしが無い。
+ */
+let gestureConsumed = false
+
+/** いまのクリックがパン・ピンチの余りなら true。クリックを受ける側が最初に見る */
+export function isGestureClick(): boolean {
+  return gestureConsumed
+}
 
 export function usePanX(): number {
   return useAtomValue(panXAtom)

@@ -23,7 +23,13 @@ import {
   leavingToRootAtom,
 } from '../nav/atoms.ts'
 import { overlayInsets, DOC_EDGE_PX } from '../world/node-layout.ts'
-import { nodePanXAtom, nodePanRangeAtom, settleNodePanAtom, unitsPerPixel } from '../world/pan.ts'
+import {
+  nodePanXAtom,
+  nodePanRangeAtom,
+  settleNodePanAtom,
+  unitsPerPixel,
+  isGestureClick,
+} from '../world/pan.ts'
 import { VIEW_HEIGHT } from '../world/paper.ts'
 import { labelText, splitColumns, type GraphNode } from '../content/schema.ts'
 import { parseRuby } from '../content/ruby.ts'
@@ -248,7 +254,8 @@ function RelatedTerms({
                       '--drift-delay': `${spot.delay}s`,
                     } as React.CSSProperties
                   }
-                  onClick={() => dispatch({ type: 'enter', id: term.id })}
+                  // パン・ピンチの離しぎわに届くクリックは捨てる（→ world/pan.ts）
+                  onClick={() => !isGestureClick() && dispatch({ type: 'enter', id: term.id })}
                 >
                   <RelatedLabel text={labelText(term.label)} />
                 </button>
@@ -482,7 +489,7 @@ function Breadcrumb() {
                     className={current ? 'is-current' : undefined}
                     aria-current={current ? 'true' : undefined}
                     disabled={current || !accepts}
-                    onClick={() => dispatch({ type: 'back', id: node.id })}
+                    onClick={() => !isGestureClick() && dispatch({ type: 'back', id: node.id })}
                   >
                     {text.length > 6 ? `${text.slice(0, 5)}…` : text}
                   </button>

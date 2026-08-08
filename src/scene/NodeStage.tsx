@@ -29,6 +29,7 @@ import {
   approach,
 } from './materials.ts'
 import { carriedNodeId } from './carry.ts'
+import { isGestureClick } from '../world/pan.ts'
 import { advancePulse, pulseAt, restartPulse } from './pulse.ts'
 import { swayAt, swayPhase } from './sway.ts'
 import {
@@ -152,7 +153,7 @@ function HeadlineGate({
       onPointerOut={() => accepts && dispatch({ type: 'hover', id: null })}
       onClick={(event) => {
         event.stopPropagation()
-        if (accepts) dispatch({ type: 'enter', id })
+        if (accepts && !isGestureClick()) dispatch({ type: 'enter', id })
       }}
     >
       {cells.map(([x, y], i) => (
@@ -297,7 +298,7 @@ function ChildNode({ item, order }: { item: DiagramItem; order: number }) {
       onPointerOut={() => accepts && dispatch({ type: 'hover', id: null })}
       onClick={(event) => {
         event.stopPropagation()
-        if (accepts) dispatch({ type: 'enter', id: node.id })
+        if (accepts && !isGestureClick()) dispatch({ type: 'enter', id: node.id })
       }}
     >
       {frame && <RoundedFrame width={width} height={height} focused={hovered} pulseOrder={order} />}
