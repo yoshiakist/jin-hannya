@@ -21,6 +21,8 @@ import { InstancedBufferAttribute } from 'three'
 import { PointsNodeMaterial, type Node } from 'three/webgpu'
 import { bufferAttribute, uniform, mix, float, vec3, smoothstep, sin, cos, uv, length, clamp } from 'three/tsl'
 import { glyphParticles } from './glyphs.ts'
+// 尺は Transition.tsx が 1 か所で持つ（README「時間の設計」）。遅れを進行度 τ に直すのに要る
+import { TRANSITION_MS } from './Transition.tsx'
 import { FOCUS_GLOW, INK } from './materials.ts'
 import { tierAtom, particleScaleAtom } from '../nav/atoms.ts'
 import { PARTICLE_BUDGET } from './tier.ts'
@@ -59,6 +61,18 @@ const SWAY_OMEGA: [number, number] = [2, 7]
  *   SPEED_SPAN / RISE_SPAN / SWAY_SPAN … 飛距離・浮き上がり・揺れに掛かる字ごとの倍率
  * いずれも字面の一辺を単位に、粒ごとの乱数の**外側**に掛かる
  */
+/**
+ * 散り始めのばらつき（ミリ秒）。全部が同じ瞬間に解けると、紙面が一斉に爆ぜたように見えて
+ * 「空間へ徐々に溶け出す」感触が出ない。粒ごとに開始を遅らせ、遅れたぶんは
+ * home に留まったまま待たせる（着地は全員 τ=1 で揃えるので、尺は伸びない）。
+ *   STAGGER_GLYPH … そのうち**字の単位で揃って**遅れるぶんの割合。
+ *     残りは粒ごとに振る。字ごとの遅れだけだと字が順に消えるアニメーションに見え、
+ *     粒ごとだけだと字の輪郭がその場で溶けるだけになる。両方混ぜて、
+ *     字が順に解けはじめ、かつ 1 字の中でも端から解ける形にする
+ */
+const STAGGER_MS = 450
+const STAGGER_GLYPH = 0.6
+
 const GUST: [number, number] = [0.15, 0.55]
 const GUST_ARC: [number, number] = [0.15, 0.85]
 const SPEED_SPAN: [number, number] = [0.75, 1.4]
@@ -166,10 +180,12 @@ export function TransitionParticles({
     const sizes: number[] = []
     // 凝集でだけ使う流入元。散開は初速と加速度で動かすので away を持たない
     const away: number[] = []
-    // 散開でだけ使う。vel = 初速、rise = 上昇量、sway = (振幅, 角周波数, 初期位相)
+    // 散開でだけ使う。vel = 初速、rise = 上昇量、sway = (振幅, 角周波数, 初期位相)、
+    // delay = 散り始めまでの待ち（τ 単位）
     const vel: number[] = []
     const rise: number[] = []
     const sway: number[] = []
+    const delay: number[] = []
 
     sources.forEach((source) => {
       const samples = glyphParticles(source.char, perGlyph)
@@ -185,6 +201,8 @@ export function TransitionParticles({
       const speedScale = SPEED_SPAN[0] + rng() * (SPEED_SPAN[1] - SPEED_SPAN[0])
       const riseScale = RISE_SPAN[0] + rng() * (RISE_SPAN[1] - RISE_SPAN[0])
       const swayScale = SWAY_SPAN[0] + rng() * (SWAY_SPAN[1] - SWAY_SPAN[0])
+      // 字ぜんたいが遅れるぶん。これに粒ごとの遅れが乗る
+      const glyphDelay = rng() * STAGGER_GLYPH
 
       for (let i = 0; i < count; i++) {
         const hx = source.position[0] + samples[i * 2]! * source.size
@@ -206,6 +224,7 @@ export function TransitionParticles({
             (SWAY_OMEGA[0] + rng() * (SWAY_OMEGA[1] - SWAY_OMEGA[0])) * swayScale,
             rng() * Math.PI * 2,
           )
+          delay.push(((glyphDelay + rng() * (1 - STAGGER_GLYPH)) * STAGGER_MS) / TRANSITION_MS)
         } else {
           // 画面全体からの薄い流入。散開の逆再生にしないため分布を変える
           const angle = rng() * Math.PI * 2
@@ -231,8 +250,16 @@ export function TransitionParticles({
     // 粒の大小は属性で持つ。1 回の描画で粗密を出す
     material.sizeNode = bufferAttribute<'float'>(instanced(sizes, 1), 'float').mul(zoomUniform)
     const homeNode = bufferAttribute<'vec3'>(instanced(home, 3), 'vec3')
-    // disperse は home から飛ぶ、converge は away → home
-    const t = mode === 'disperse' ? progressUniform : float(1).sub(progressUniform)
+    // disperse は home から飛ぶ、converge は away → home。
+    // 散開では粒ごとに開始を遅らせ、残りの尺を引き伸ばして τ=1 で全員が揃うようにする
+    // （尺を伸ばすと余韻の入りに間に合わない粒が出る）。位置も濃さもこの t から引くので、
+    // 待っているあいだの粒は home に不動のまま、不透明で留まる。
+    const delayNode =
+      mode === 'disperse' ? bufferAttribute<'float'>(instanced(delay, 1), 'float') : float(0)
+    const t =
+      mode === 'disperse'
+        ? clamp(progressUniform.sub(delayNode).div(float(1).sub(delayNode)), 0, 1)
+        : float(1).sub(progressUniform)
 
     if (mode === 'disperse') {
       // 初速 + 上向きの等加速度 + 横方向の正弦加速度を、τ で解析的に積分した位置。
