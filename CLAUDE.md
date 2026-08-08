@@ -1,7 +1,22 @@
 # CLAUDE.md — 深般若（jin-hannya）
 
 般若心経を「文字 → 句 → 語 → 構成要素」と潜っていくグラフィカル訳文兼辞書。
-**設計の正典は `README.md`。** ここは毎回の起動時に要る情報だけを抜いた索引で、判断の根拠が要るときは README の該当節を読むこと。
+**README.md** がプロジェクトの概要と貫く方針、**観点ごとの設計は `.claude/skills/` の各 skill が正典**。
+ここは毎回の起動時に要る情報だけを抜いた索引で、判断の根拠が要るときは下の対応表から該当 skill を読むこと。
+
+| 観点 | skill |
+|---|---|
+| コンテンツモデル（`sutra.txt` / YAML / `range` / 検証） | `sutra-content` |
+| L0 の紙面・格子 | `paper-grid` |
+| L1 以降の画面文法・3 レイアウト・`overlayInsets` | `node-screen` |
+| 遷移演出（持ち越し・散開・凝集・尺） | `transition-fx` |
+| パンと拡大 | `pan-zoom` |
+| 色・墨・ゆらぎ・グロー・グリフ前計算 | `ink-visuals` |
+| FSM・URL・インジケータ・左矢印 | `navigation-fsm` |
+| 音 | `audio-design` |
+| 2 レイヤー合成・性能ティア・技術スタック | `perf-tier` |
+
+実装状況・未決事項は `docs/status.md`。
 
 ## コマンド
 
@@ -68,7 +83,7 @@ assets/     svg/(筆文字118) pattern/circle.svg bgm/ sfx/ voice/(未収録)
 - ドラッグの `setPointerCapture` は `pointerdown` 即時ではなく **6px 動いてから**（即時だとクリックが成立しない）。
 - 紙面の可動域は**ビューポート依存**。縦長スマホでは必ず左へはみ出し、16:9 PC では収まる。定数化せずリサイズごとに実測する。
 
-## いまの状態（詳細は README「実装状況」）
+## いまの状態（詳細は `docs/status.md`）
 
 - `npm run build` は通る。確認環境は headless Chromium（Tier 2 / WebGL2）1440x810。
 - **遷移演出は繋がった。** 持ち越し字の連続移動も粒子も出る（点サイズは `Sprite` のインスタンシングで解決）。残るのは値の詰めと Tier 1 実機での見え方。

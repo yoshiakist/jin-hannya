@@ -1,0 +1,117 @@
+---
+name: sutra-content
+description: 深般若のコンテンツモデル（content/sutra.txt・graph/*.yaml・docs/*.md）を読み書きするときに使う。文字インデックス range、id 命名規約、label/reading の空白の意味、ビルド時検証の条件を扱う。経文の字を増減する・ノードを足す・検証エラーを直す作業で必ず参照する。
+---
+
+# コンテンツモデル
+
+グラフ構造は YAML、解説文は Markdown + frontmatter。**経文本文・解説文本文はすべてここに置き、コード側に埋め込まない。**
+README・コード・コミットメッセージに複製しない。唯一の出所は `content/graph/*.yaml` の `summary` と `content/docs/*.md`。
+
+## `content/sutra.txt`
+
+全文のプレーンテキスト。**文字インデックスの唯一の基準**となるため、以下を厳守する。
+
+- **改行は L0 の列の切れ目**として使う。1 行 = 1 列（現在 20 列）。1 行は `COLS_PER_LINE = 16`（`src/content/sutra.ts`）字以内に収める。この定数は 1 列に収まる字数の**上限**であって分割規則ではない。
+- 行の途中に空白・約物を入れない（ローダが除去するため `range` はずれないが、その升は空かずに詰まる）。真言行の全角スペースは `content:validate` が警告 1 件として知らせる。
+- **ローダが空白を除去して正規形を作り、`range` はその正規形に対する半開区間**。ファイルを手で整形しても `range` がずれないようにするための約束。
+- 文字を追加・削除するとすべての `range` がずれるため、変更は `range` の一括見直しとセットで行う。行の追加・移動は `range` を動かさないが紙面の見え方を変える。
+- 含まれる文字種は `assets/svg/` の 118 字に限る（ビルド時に検証）。在庫に無い字は、在庫のある異体字へ正規化する（`舍`→`舎`、`声`→`聲` はこの理由で置換済み。字数が変わらないので `range` はずれていない）。
+
+## `content/graph/*.yaml`
+
+```yaml
+id: goun                 # 一意のスラッグ（ローマ字）
+kind: term               # sutra | phrase | term
+label: 五蘊              # 表示ラベル（大書に使う文字列）
+reading: ごうん
+sanskrit:
+  text: pañca-skandha    # ラテン翻字
+  kana: パンチャ・スカンダ
+summary: …               # 右中段の短い定義（数十字）
+parent: shoken-to-kaiku
+children: [shiki-rupa, ju, so, gyo, shiki-vijnana]
+related: [juuhachi-kai]  # 隣接ノード（将来用・UI 未設計）
+layout: circle           # none | circle | column
+range: [12, 17]          # 全文に対する文字インデックス範囲（半開区間 [start, end)）
+audio: goun.m4a          # 読み上げ音源（assets/voice/ 配下のファイル名）
+```
+
+- **`layout` はノード側が持つ。** 円相か縦連結かは概念ごとに異なるため、描画側で決めない。
+- `label` に含まれる各文字は `assets/svg/` に対応する SVG が存在しなければならない。
+- **`label` の空白・改行は大書の列の切れ目**（`headlineLayout`）。区切りを入れれば折り返し位置をコンテンツ側で決められ、入れなければ字数から自動で 1〜2 列に組む。字の大きさはいちばん長い列から決まる。
+- 列の切れ目は大書だけのもの。**字だけが要る場所は `labelText()` を通す**（`range` との突き合わせ・グリフ在庫の検査・図の中の子の組版・現在位置インジケータ）。
+- **`reading` の空白も列の切れ目**（`label` と同じ約束）。
+
+### `id` の命名規約
+
+`id` は一意のスラッグ（ローマ字・小文字・ハイフン区切り）で、**ファイル名は `<id>.yaml` / `<id>.md` と一致させる**（`content/graph/` と `content/docs/` の両方）。
+
+| `kind` | 形 | 例 |
+|---|---|---|
+| `sutra` | 経の名 | `shingyo` |
+| `phrase` | **`<start>-to-<end>`** | `kanjizai-to-issaikuyaku` |
+| `term` | 語そのものの読み | `goun`・`shiki-rupa` |
+
+`phrase` の `start` / `end` は、その句の**先頭の語**と**末尾の語**の読みをローマ字にしたもの。
+句は数文字から数十文字まで長さがまちまちで、`label` 全体をスラッグにすると破綻するため、両端で挟んで示す。
+両端の語は文法上の切れ目で取る（`観自在菩薩` の `菩薩`、`度一切苦厄` の `度` のような接辞は落としてよい）。
+句が短く両端が同じ語になる場合は `-to-` を使わず、その語の読みだけを `id` にする。
+
+### `range` — 全文に対する文字インデックス範囲
+
+- `content/sutra.txt` の正規形（空白除去後）の先頭を `0` とする**半開区間 `[start, end)`**。`end - start` が文字数になる。
+- `kind: phrase` は必須。`kind: term` も、全文中に対応する連続文字列があれば持つ。
+- 全文中に現れない概念ノード（`前五識`・`阿頼耶識` など、経文に登場しない用語）は `range` を**持たない**。`range` の有無が「格子上にハイライトできるか」を決める。
+- ルート（`kind: sutra`）は `range: [0, <全文長>]` とする。
+
+## `content/docs/*.md`
+
+```markdown
+---
+id: goun
+---
+
+（長文解説の本文。DOM レイヤーで縦書き組版される）
+```
+
+## ビルド時検証（zod + 自作チェック）
+
+`npm run content:validate`（`scripts/validate-graph.ts`）で落とすべき条件：
+
+- `parent` / `children` / `related` の参照切れ
+- 親子関係の非対称（`a.children` に `b` があるのに `b.parent` が `a` でない）
+- 到達不能な孤立ノード
+- `id` に対応する `docs/*.md` の欠落
+- `label` の構成文字に対応する SVG の欠落
+- `sutra.txt.slice(start, end) === labelText(label)`（`range` を持つノードのみ）
+- 親が `range` を持つなら、子の `range` は親の範囲に**内包**されていること
+- `range` が全文長を超えないこと
+- **`term` が `layout: none` で子を持つ**場合のみ落とす
+
+### 検証で意図的にゆるめてある点
+
+| 判断 | 理由 |
+|---|---|
+| **`layout: none` でも `phrase` は子を持ってよい** | `layout` が支配するのは「子の**関係図**」であって遷移そのものではない。初期スコープの経路自体が句 → 句の下降を含むため、ここで落とすと成立しない |
+| **根（`kind: sutra`）は `range` と `label` を突き合わせない** | 根の `range` は全文を指すが、`label` は大書用の題名であって全文ではない |
+
+## 現在のグラフ（15 ノード）
+
+初期スコープは次の 1 経路。
+
+```
+般若心経 全文
+  └─ 観自在菩薩行深般若波羅蜜時 …        （句 / layout: none）
+       └─ 照見五蘊皆空                    （句 / layout: none）
+            └─ 五蘊                       （語 / layout: circle）
+                 └─ 識                    （語 / layout: column）
+                      └─ 六識 6 ノード
+```
+
+**識の子を六識（眼耳鼻舌身意）にした。** `layout: column` には子が要るが、前五識・末那識・阿頼耶識は `assets/svg/` に字が無く大書できないため、在庫のある六識を採った。
+
+## 関連
+
+- L0 の格子座標と `range` のハイライト → `paper-grid`
+- `label` / `reading` の列の切れ目が組版でどう効くか → `node-screen`
