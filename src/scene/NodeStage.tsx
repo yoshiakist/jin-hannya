@@ -25,7 +25,7 @@ import {
   createGlowMaterial,
   createInkMaterial,
   createStrokeMaterial,
-  stageOpacityValue,
+  nodeOpacityValue,
   approach,
 } from './materials.ts'
 import { carriedNodeId } from './carry.ts'
@@ -111,7 +111,7 @@ function CircleLayout({ items }: { items: DiagramItem[] }) {
  * hover では文字と枠の両方が琥珀に光る（img_03 の文字のみの発光との違い）。
  */
 function ColumnLayout({ items }: { items: DiagramItem[] }) {
-  // 連結線も字と同じ濃さで出入りさせる（stageOpacity を通すためノードマテリアルで持つ）
+  // 連結線も字と同じ濃さで出入りさせる（nodeOpacity を通すためノードマテリアルで持つ）
   const link = useMemo(() => createStrokeMaterial(0.55), [])
   useEffect(() => () => link.dispose(), [link])
   const { pitch, size } = columnMetrics(items.length)
@@ -228,7 +228,7 @@ function RoundedFrame({ width, height, focused }: { width: number; height: numbe
     const material = line.material as LineBasicMaterial
     material.color.copy(STROKE).lerp(FOCUS, amount.current)
     // 枠は Line なのでノードマテリアルを持てない。同じ値を CPU 側から掛ける
-    material.opacity = 0.75 * stageOpacityValue()
+    material.opacity = 0.75 * nodeOpacityValue()
   })
 
   return <primitive object={line} />

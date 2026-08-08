@@ -10,12 +10,12 @@
  * 粒子の運動そのものは Particles.tsx。
  */
 
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { useAtomValue, useSetAtom } from 'jotai'
 import { Mesh } from 'three'
-import { TransitionParticles, type ParticleSource } from './Particles.tsx'
-import { INK, carryOpacity, createInkMaterial, stageOpacity } from './materials.ts'
+import { TransitionParticles, type ParticleMode, type ParticleSource } from './Particles.tsx'
+import { INK, carryOpacity, createInkMaterial, nodeOpacity, paperOpacity } from './materials.ts'
 import { setCarriedNodeId } from './carry.ts'
 import { glyphGeometry } from './glyphs.ts'
 import {
@@ -37,6 +37,8 @@ export const TRANSITION_MS = 1700
 /**
  * 演出が終わってから、字とオーバーレイが現れ始めるまでの間（ミリ秒）。
  * 着地を見せきってから次の面を出す。DOM 側（`Overlay.tsx`）も同じ値から遅延を引く。
+ * **潜るとき（と L1 以降どうしの戻り）だけ**の間合い。L0 へ戻るときは、紙面が演出の
+ * あいだに現れきっているのでこの遅延を挟まない。
  */
 export const APPEAR_DELAY_MS = 500
 
@@ -157,42 +159,73 @@ function glyphFade(t: number): number {
 }
 
 /**
+ * L0 へ戻るとき、紙面の字が現れはじめる進行度。
+ * ここから τ=1（＝粒子が形に収まりきる時点）にかけて濃くなるので、
+ * 光が凝集するのと同じ時間で字が立ち上がり、着地の瞬間には字が出そろっている。
+ */
+const ENTER_FROM = 0.5
+
+/** τ → 戻り先の紙面の濃さ。2 乗のカーブで、終わりぎわに一気に濃くなる */
+function enterFade(t: number): number {
+  const k = Math.min(1, Math.max(0, (t - ENTER_FROM) / (1 - ENTER_FROM)))
+  return k * k
+}
+
+/**
  * 字のメッシュの出入り。
  *
  * 紙面・大書は `Stage.tsx` が `nav.nodeId` で丸ごと差し替えるので、放っておくと
- * 演出の終わりで瞬間的に入れ替わる。ここが `stageOpacity`（materials.ts）を毎フレーム進め、
- * 墨・滲み・枠線のシェーダにまとめて効かせる。粒子と同じく**潜ると戻るで非対称**：
+ * 演出の終わりで瞬間的に入れ替わる。ここが深度ごとの濃さ（materials.ts の
+ * `paperOpacity` / `nodeOpacity`）を毎フレーム進め、墨・滲み・枠線のシェーダに
+ * まとめて効かせる。粒子と同じく**潜ると戻るで非対称**：
  *   消える … 2 乗のカーブ（`glyphFade`）で素早く引く。あとに残るのは粒子だけになる
- *   現れる … `APPEAR_DELAY_MS` だけ待ってから、立ち上がりの速い 2 乗のカーブで出す。
- *            持ち越しの字が着地したのを見せきってから、周りが追って現れる
+ *   現れる … 行き先が L0 なら、紙面は演出のあいだに `enterFade` で立ち上がる。
+ *            粒子の凝集と同じ時間で濃くなるので、光が集まってそのまま字になる。
+ *            行き先が L1 以降なら、面が差し替わってから `APPEAR_DELAY_MS` 待って出す
+ *            （持ち越しの字が着地したのを見せきってから、周りが追って現れる）
  *
  * 持ち越される字だけはこの出入りに乗らない（`carryOpacity`）。遷移のあいだは Transition が
  * 動かしながら描くので伏せ、差し替わった瞬間に不透明のまま引き継ぐ。
  */
 export function StageFade() {
   const nav = useAtomValue(navAtom)
-  const step = useRef<{ kind: 'out' | 'in'; at: number } | null>(null)
+  const step = useRef<{ kind: 'out' | 'in'; at: number; fromRoot: boolean; toRoot: boolean } | null>(null)
 
   useEffect(() => {
     if (nav.phase === 'zooming-in' || nav.phase === 'zooming-out') {
       // 持ち越されるのは深い側のノードの字。潜るなら行き先、戻るなら出発点
       setCarriedNodeId(nav.phase === 'zooming-in' ? nav.pendingId : nav.nodeId)
-      step.current = { kind: 'out', at: performance.now() }
+      step.current = {
+        kind: 'out',
+        at: performance.now(),
+        fromRoot: nav.nodeId === root.id,
+        toRoot: nav.pendingId === root.id,
+      }
     } else if (step.current?.kind === 'out') {
-      // 相が抜けた時点で中身は差し替わっている。ここから現れる側へ
-      step.current = { kind: 'in', at: performance.now() }
+      if (step.current.toRoot) {
+        // 紙面は演出のあいだに現れきっている。改めて出さず、持ち越しの字だけ受け取る
+        paperOpacity.value = 1
+        carryOpacity.value = 1
+        setCarriedNodeId(null)
+        step.current = null
+      } else {
+        // 相が抜けた時点で中身は差し替わっている。ここから現れる側へ
+        step.current = { ...step.current, kind: 'in', at: performance.now() }
+      }
     }
   }, [nav.phase, nav.nodeId, nav.pendingId])
 
   useFrame(() => {
     const current = step.current
-    if (!current) {
-      stageOpacity.value = 1
-      return
-    }
+    if (!current) return
     const elapsed = performance.now() - current.at
     if (current.kind === 'out') {
-      stageOpacity.value = glyphFade(Math.min(1, elapsed / TRANSITION_MS))
+      const t = Math.min(1, elapsed / TRANSITION_MS)
+      // 出ていくのは出発点の側の深度。潜るなら紙面、戻るなら大書と図
+      const leaving = current.fromRoot ? paperOpacity : nodeOpacity
+      leaving.value = glyphFade(t)
+      // 戻り先が L0 のときだけ、紙面がもう画面に居る。凝集に合わせて濃くしていく
+      if (current.toRoot) paperOpacity.value = enterFade(t)
       // 持ち越しの字は Transition が描いているので、こちら側では伏せる
       carryOpacity.value = 0
     } else {
@@ -200,7 +233,7 @@ export function StageFade() {
       // 待っているあいだ画面に残るのはこの字だけになる
       carryOpacity.value = 1
       const u = Math.min(1, Math.max(0, elapsed - APPEAR_DELAY_MS) / APPEAR_MS)
-      stageOpacity.value = 1 - (1 - u) * (1 - u)
+      nodeOpacity.value = 1 - (1 - u) * (1 - u)
       if (u >= 1) {
         step.current = null
         setCarriedNodeId(null)
@@ -211,17 +244,35 @@ export function StageFade() {
   return null
 }
 
+/**
+ * 凝集しきった粒子が消えるまでの尺（ミリ秒）。
+ * 演出の**終わったあと**に伸びる余韻で、字が出そろってから光だけが遅れて引く。
+ * ここで粒子を捨てずに薄めるのは絵のためでもあり、面の差し替えと同じフレームで
+ * マテリアルを捨てないためでもある。
+ */
+const PARTICLE_FADE_MS = 520
+
+/** いま描いている演出ひとつぶん。相が抜けたあとも、粒子が消えきるまで残る */
+interface Run {
+  mode: ParticleMode
+  particles: ParticleSource[]
+  carried: CarryPair[]
+  /** 演出の開始時刻。進行度も余韻もここから数える */
+  at: number
+}
+
 export function Transition() {
   const nav = useAtomValue(navAtom)
   const tier = useAtomValue(tierAtom)
   const dispatch = useSetAtom(navAtom)
-  const startedAt = useRef(0)
+  const [run, setRun] = useState<Run | null>(null)
 
   const active = nav.phase === 'zooming-in' || nav.phase === 'zooming-out'
-  const mode = nav.phase === 'zooming-in' ? 'disperse' : 'converge'
 
-  const { particles, carried } = useMemo<{ particles: ParticleSource[]; carried: CarryPair[] }>(() => {
-    if (!active || !nav.pendingId) return { particles: [], carried: [] }
+  // 演出の組み立てと、終了の通知。相が抜けても run は畳まない（下の余韻で捨てる）
+  useEffect(() => {
+    if (!active || !nav.pendingId) return
+    const mode: ParticleMode = nav.phase === 'zooming-in' ? 'disperse' : 'converge'
     const from = nodeById(nav.nodeId) ?? root
     const to = nodeById(nav.pendingId) ?? root
     const before = visibleGlyphs(from)
@@ -232,28 +283,40 @@ export function Transition() {
     // 持ち越されない字が粒子になる。潜るときは今ある字が散り、戻るときは現れる字が凝集する
     const stage = mode === 'disperse' ? before : after
     const survives = pairs.length > 0 ? pivot : null
-    return { particles: stage.filter((glyph) => glyph.owner !== survives), carried: pairs }
-  }, [active, mode, nav.nodeId, nav.pendingId])
-
-  // 演出の終了で FSM を次の相へ進める。Tier 3 は粒子を出さないが尺は揃える
-  useEffect(() => {
-    if (!active) return
-    startedAt.current = performance.now()
+    setRun({
+      mode,
+      particles: stage.filter((glyph) => glyph.owner !== survives),
+      carried: pairs,
+      at: performance.now(),
+    })
+    // Tier 3 は粒子を出さないが尺は揃える
     const timer = setTimeout(() => dispatch({ type: 'settled' }), TRANSITION_MS)
     return () => clearTimeout(timer)
-  }, [active, nav.pendingId, dispatch])
+  }, [active, nav.phase, nav.nodeId, nav.pendingId, dispatch])
 
-  const progress = () => Math.min(1, (performance.now() - startedAt.current) / TRANSITION_MS)
+  // 余韻が切れたところで粒子を捨てる。次の遷移が始まれば run ごと差し替わる
+  useEffect(() => {
+    if (!run) return
+    const timer = setTimeout(() => setRun(null), TRANSITION_MS + PARTICLE_FADE_MS)
+    return () => clearTimeout(timer)
+  }, [run])
 
-  if (!active) return null
+  const elapsed = () => performance.now() - (run?.at ?? 0)
+  const progress = () => Math.min(1, elapsed() / TRANSITION_MS)
+  /** 余韻の濃さ。演出のあいだは 1 のまま、終わってから 0 へ引く */
+  const tail = () => 1 - Math.min(1, Math.max(0, elapsed() - TRANSITION_MS) / PARTICLE_FADE_MS)
+
+  if (!run) return null
 
   return (
     <>
-      {carried.map((pair, i) => (
-        <CarryGlyph key={`${pair.char}-${i}`} pair={pair} progress={progress} />
-      ))}
-      {tier !== 3 && particles.length > 0 && (
-        <TransitionParticles sources={particles} mode={mode} progress={progress} />
+      {/* 持ち越しの字は演出のあいだだけ。相が抜けたら紙面・大書の側が同じ位置で引き継ぐ */}
+      {active &&
+        run.carried.map((pair, i) => (
+          <CarryGlyph key={`${pair.char}-${i}`} pair={pair} progress={progress} />
+        ))}
+      {tier !== 3 && run.particles.length > 0 && (
+        <TransitionParticles sources={run.particles} mode={run.mode} progress={progress} tail={tail} />
       )}
     </>
   )

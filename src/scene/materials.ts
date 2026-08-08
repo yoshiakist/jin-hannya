@@ -55,10 +55,16 @@ export function approach(current: number, target: number, delta: number, duratio
  *
  * 字は粒子と違って 1 枚のメッシュなので、CPU 側で色を書き換えても
  * ノードマテリアルの不透明度には効かない。**シェーダの `opacityNode` に掛ける**必要があり、
- * かつ紙面の全インスタンスへ一斉に効かせたいので、ここに 1 本だけユニフォームを置いて
+ * かつ紙面の全インスタンスへ一斉に効かせたいので、ここにユニフォームを置いて
  * 墨・滲み・枠線のすべてがこれを読む。値を進めるのは Transition.tsx の `StageFade`。
+ *
+ * **深度ごとに 1 本ずつ**持つ。戻るときは出ていく大書と入ってくる紙面が同じ時間に画面へ
+ * 居るので（Stage.tsx が紙面を先に置く）、1 本では片方を薄めながらもう片方を出せない。
  */
-export const stageOpacity = uniform(1)
+/** L0 の紙面が読む濃さ */
+export const paperOpacity = uniform(1)
+/** L1 以降（大書・図・描線）が読む濃さ */
+export const nodeOpacity = uniform(1)
 
 /**
  * **持ち越される字**（選んだ句 = 次の見出しになる字）だけが読むもう 1 本。
@@ -68,14 +74,17 @@ export const stageOpacity = uniform(1)
  */
 export const carryOpacity = uniform(0)
 
-/** `persist` が 1 の字は持ち越し側の濃さを読む */
-export function transitionAlpha(persist: Node<'float'>): Node<'float'> {
-  return mix(stageOpacity, carryOpacity, persist)
+/** `persist` が 1 の字は持ち越し側の濃さを読む。`layer` はその字が乗っている深度の濃さ */
+export function transitionAlpha(
+  persist: Node<'float'>,
+  layer: Node<'float'> = nodeOpacity,
+): Node<'float'> {
+  return mix(layer, carryOpacity, persist)
 }
 
-/** 線・枠など、ノードマテリアルでないものが読む同じ値 */
-export function stageOpacityValue(): number {
-  return stageOpacity.value as number
+/** 線・枠など、ノードマテリアルでないものが読む同じ値（L1 以降にしか無い） */
+export function nodeOpacityValue(): number {
+  return nodeOpacity.value as number
 }
 
 /* ---- 墨の質感 -------------------------------------------------------------
@@ -207,10 +216,15 @@ function glowFalloff(cell: Node<'float'>, local: Node<'vec2'>): Node<'float'> {
 export function createGlowMaterial(
   cell: Node<'float'>,
   amount: Node<'float'>,
-  color: Color = FOCUS_GLOW,
-  /** 1 なら持ち越される字。遷移中の濃さを字の墨と揃える */
-  persist: Node<'float'> | number = 0,
+  options: {
+    color?: Color
+    /** 1 なら持ち越される字。遷移中の濃さを字の墨と揃える */
+    persist?: Node<'float'> | number
+    /** この滲みが乗っている深度の濃さ。紙面なら `paperOpacity` */
+    layer?: Node<'float'>
+  } = {},
 ): MeshBasicNodeMaterial {
+  const { color = FOCUS_GLOW, persist = 0, layer } = options
   const material = new MeshBasicNodeMaterial({
     transparent: true,
     depthWrite: false,
@@ -221,19 +235,19 @@ export function createGlowMaterial(
   // PlaneGeometry(1,1) の字面ローカル [-0.5, 0.5] を、セル内の 0..1 へ
   material.opacityNode = glowFalloff(cell, positionGeometry.xy.add(0.5))
     .mul(amount)
-    .mul(transitionAlpha(typeof persist === 'number' ? float(persist) : persist))
+    .mul(transitionAlpha(typeof persist === 'number' ? float(persist) : persist, layer))
   return material
 }
 
 /**
  * 図の連結線・区切りなど、字ではない細い描線のマテリアル。
- * 遷移では字と同じ濃さで出入りさせたいので、`stageOpacity` を通すためだけに
+ * 遷移では字と同じ濃さで出入りさせたいので、`nodeOpacity` を通すためだけに
  * `meshBasicMaterial` ではなくノードマテリアルで持つ。
  */
 export function createStrokeMaterial(opacity = 0.55, color: Color = STROKE): MeshBasicNodeMaterial {
   const material = new MeshBasicNodeMaterial({ transparent: true, depthWrite: false, toneMapped: false })
   material.colorNode = vec3(color.r, color.g, color.b)
-  material.opacityNode = stageOpacity.mul(opacity)
+  material.opacityNode = nodeOpacity.mul(opacity)
   return material
 }
 
@@ -243,7 +257,7 @@ export function createStrokeMaterial(opacity = 0.55, color: Color = STROKE): Mes
  */
 export function createInkMaterial(
   /**
-   * false にすると遷移の濃さ（`stageOpacity` / `carryOpacity`）に従わない。
+   * false にすると遷移の濃さ（`nodeOpacity` / `carryOpacity`）に従わない。
    * 遷移中に持ち越しの字を自前で動かしながら描く Transition だけが使う。
    */
   followsTransition = true,

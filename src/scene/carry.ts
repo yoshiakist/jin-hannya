@@ -7,7 +7,7 @@
  *   - 紙面・大書（Paper / NodeStage）は「自分の字が持ち越し側か」をフレームごとに引き、
  *   - Transition は同じ字を出発点から行き先へ動かしながら描く。
  *
- * 濃さそのものは `materials.ts` の `stageOpacity` / `carryOpacity` が持つ。
+ * 濃さそのものは `materials.ts` の `paperOpacity` / `nodeOpacity` / `carryOpacity` が持つ。
  * こちらは id だけなので、atom にせず素の値で持つ（描画は毎フレーム引き直すので
  * 再レンダーを起こす必要がない）。書き込むのは Transition.tsx の `StageFade` だけ。
  */

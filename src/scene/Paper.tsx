@@ -24,6 +24,7 @@ import {
   inkShade,
   inkAlpha,
   approach,
+  paperOpacity,
   transitionAlpha,
 } from './materials.ts'
 import { CELL_X, CELL_Y, GLYPH_SIZE, gridPosition } from '../world/paper.ts'
@@ -41,7 +42,50 @@ interface CharGroup {
   indices: number[]
 }
 
+/**
+ * hover 中に、フォーカス外の字をどこまで沈めるか（0 = 沈めない）。
+ * どの字も同じだけ沈むので紙面で 1 本。進めるのは `Paper` 本体
+ * （字ごとに進めると 1 フレームで 90 回寄ってしまう）。
+ */
+const dim = uniform(0)
+
+/**
+ * 紙面ぜんぶで共有する墨のマテリアル。
+ *
+ * 字ごとに持つと、L0 へ戻るたびに 90 本ぶんのノードマテリアルを組み直すことになり、
+ * 面が差し替わった瞬間に固まる（シェーダの組み立ては 1 本でも安くない）。
+ * ムラの種・フォーカス量・持ち越しはすべてインスタンス属性で持たせてあるので、
+ * シェーダそのものは字によらず同じ。ここで 1 度だけ作って以後ずっと使い回す。
+ */
+let sharedInk: MeshBasicNodeMaterial | null = null
+
+function paperInk(): MeshBasicNodeMaterial {
+  if (sharedInk) return sharedInk
+  const material = new MeshBasicNodeMaterial({ transparent: true, toneMapped: false })
+  const focused = attribute<'float'>('aFocus', 'float')
+  const resting = mix(vec3(INK.r, INK.g, INK.b), vec3(INK_RESTING.r, INK_RESTING.g, INK_RESTING.b), dim)
+  const base = mix(resting, vec3(FOCUS.r, FOCUS.g, FOCUS.b), focused)
+  // 墨のムラ。光っている字ではムラを浅くして、発光の芯が抜けないようにする
+  const density = mix(inkDensity(attribute<'float'>('aSeed', 'float')), 1, focused.mul(0.7))
+  material.colorNode = base.mul(inkShade(density))
+  // 光る字だけ不透明度も上げ、グローの芯にする
+  // 遷移中は紙面ぜんたいがこの係数で薄れる（潜る＝散開に合わせて消え、戻ると凝集に合わせて現れる）。
+  // ただし選んだ句の字だけは持ち越し側を読むので、薄れずにそのまま次の見出しへ渡る
+  material.opacityNode = mix(mix(0.94, 0.55, dim), 1, focused)
+    .mul(inkAlpha(density))
+    .mul(transitionAlpha(attribute<'float'>('aPersist', 'float'), paperOpacity))
+  sharedInk = material
+  return material
+}
+
 export function Paper() {
+  const hoveredId = useAtomValue(navAtom).hoveredId
+
+  // 沈み込みは紙面で 1 つ。hover の変化そのものは行き先だけを書き、寄せるのはここ
+  useFrame((_, delta) => {
+    dim.value = approach(dim.value, hoveredId ? 1 : 0, delta)
+  })
+
   // 文字インデックス → 潜り先の句 id。hover 判定と持ち越し判定が同じ表を引く
   const indexToNode = SUTRA_INDEX_TO_NODE
 
@@ -114,6 +158,7 @@ function FocusGlow({ indexToNode }: { indexToNode: readonly (string | null)[] })
       createGlowMaterial(
         attribute<'float'>('aCell', 'float'),
         attribute<'float'>('aFocus', 'float').mul(GLOW_STRENGTH),
+        { layer: paperOpacity },
       ),
     [],
   )
@@ -252,33 +297,14 @@ function CharInstances({ group, indexToNode }: { group: CharGroup; indexToNode: 
     return base
   }, [group.char, focus, seed, persist])
 
-  /** hover 中に、フォーカス外の字をどこまで沈めるか（0 = 沈めない） */
-  const dim = useMemo(() => uniform(0), [])
-  const dimTarget = useRef(0)
-
-  const material = useMemo(() => {
-    const nodeMaterial = new MeshBasicNodeMaterial({ transparent: true, toneMapped: false })
-    const focused = attribute<'float'>('aFocus', 'float')
-    const resting = mix(vec3(INK.r, INK.g, INK.b), vec3(INK_RESTING.r, INK_RESTING.g, INK_RESTING.b), dim)
-    const base = mix(resting, vec3(FOCUS.r, FOCUS.g, FOCUS.b), focused)
-    // 墨のムラ。光っている字ではムラを浅くして、発光の芯が抜けないようにする
-    const density = mix(inkDensity(attribute<'float'>('aSeed', 'float')), 1, focused.mul(0.7))
-    nodeMaterial.colorNode = base.mul(inkShade(density))
-    // 光る字だけ不透明度も上げ、グローの芯にする
-    // 遷移中は紙面ぜんたいがこの係数で薄れる（潜る＝散開に合わせて消え、戻ると現れる）。
-    // ただし選んだ句の字だけは持ち越し側を読むので、薄れずにそのまま次の見出しへ渡る
-    nodeMaterial.opacityNode = mix(mix(0.94, 0.55, dim), 1, focused)
-      .mul(inkAlpha(density))
-      .mul(transitionAlpha(attribute<'float'>('aPersist', 'float')))
-    return nodeMaterial
-  }, [dim])
+  // シェーダは紙面で 1 本を共有する（字ごとに組み直さない）
+  const material = paperInk()
 
   // hover の変化そのものは変わったときに 1 度だけ拾い、補間はフレーム側に任せる
   useEffect(() => {
     group.indices.forEach((index, i) => {
       focusTarget[i] = nav.hoveredId !== null && indexToNode[index] === nav.hoveredId ? 1 : 0
     })
-    dimTarget.current = nav.hoveredId ? 1 : 0
   }, [nav.hoveredId, group.indices, indexToNode, focusTarget])
 
   useFrame(({ clock }, delta) => {
@@ -297,7 +323,6 @@ function CharInstances({ group, indexToNode }: { group: CharGroup; indexToNode: 
       }
     }
     if (moved) focus.needsUpdate = true
-    dim.value = approach(dim.value, dimTarget.current, delta)
 
     // 持ち越される字（＝選んだ句）。相ではなく id の一致で決まるので毎フレーム引き直す
     const carried = carriedNodeId()

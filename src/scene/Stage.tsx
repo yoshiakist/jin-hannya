@@ -161,12 +161,19 @@ function FrameBudget() {
 
 function SceneContent() {
   const nav = useAtomValue(navAtom)
-  const showPaper = nav.nodeId === root.id
+  // 戻るときは**紙面を演出の始まりから置く**。90 字ぶんのインスタンスとシェーダの用意は
+  // 相が畳まれた瞬間に払うと数フレーム固まるので、粒子が凝集しているあいだに済ませておく。
+  // 出したまま薄いのは `paperOpacity`（Transition.tsx の `StageFade`）が 0 から立ち上げる。
+  const returning = nav.phase === 'zooming-out' && nav.pendingId === root.id
+  const showPaper = nav.nodeId === root.id || returning
+  const showNode = nav.nodeId !== root.id
   return (
     <>
       <CameraRig />
       <FrameBudget />
-      {showPaper ? <Paper /> : <NodeStage />}
+      {/* 戻りぎわだけは 2 つが同時に居る。濃さは深度ごとに別のユニフォームで持つ */}
+      {showPaper && <Paper />}
+      {showNode && <NodeStage />}
       {/* 字の出入りは粒子と別勘定。Tier 3 でも尺を揃えるため Transition と分けて常に置く */}
       <StageFade />
       <Transition />

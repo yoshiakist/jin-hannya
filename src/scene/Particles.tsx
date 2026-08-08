@@ -100,10 +100,17 @@ export function TransitionParticles({
   sources,
   mode,
   progress,
+  tail,
 }: {
   sources: ParticleSource[]
   mode: ParticleMode
   progress: () => number
+  /**
+   * 演出のあとに掛かる余韻の係数（1 = そのまま、0 = 消えきり）。
+   * 凝集では、形に収まった光がここでゆっくり引く（`Transition.tsx` の `PARTICLE_FADE_MS`）。
+   * 進行度と別に持つのは、位置が home に着いたまま濃さだけを落としたいため。
+   */
+  tail?: () => number
 }) {
   const tier = useAtomValue(tierAtom)
   const scale = useAtomValue(particleScaleAtom)
@@ -216,14 +223,16 @@ export function TransitionParticles({
       mode === 'disperse'
         ? ramp(float(DISPERSE_GONE).sub(t).div(DISPERSE_GONE - DISPERSE_HOLD))
         : ramp(float(1).sub(t).div(CONVERGE_FADE_IN))
-    material.opacityNode = fade.mul(disc).mul(0.85)
+    // 演出が終わったあとの余韻。凝集ではここだけで消える（位置は home に着いたまま）
+    const tailUniform = uniform(1)
+    material.opacityNode = fade.mul(disc).mul(tailUniform).mul(0.85)
     material.colorNode = mix(
       vec3(FOCUS_GLOW.r, FOCUS_GLOW.g, FOCUS_GLOW.b),
       vec3(INK.r, INK.g, INK.b),
       smoothstep(0, 0.6, t),
     )
 
-    return { material, count: home.length / 3, progressUniform, zoomUniform }
+    return { material, count: home.length / 3, progressUniform, zoomUniform, tailUniform }
   }, [sources, mode, perGlyph])
 
   // 遷移ごとに作り直すので、前のぶんを捨てる
@@ -232,6 +241,7 @@ export function TransitionParticles({
   useFrame((state) => {
     if (!built) return
     built.progressUniform.value = progress()
+    built.tailUniform.value = tail ? tail() : 1
     // camera.zoom には「視野高を画面高に合わせる係数」も乗っているので、等倍ぶんを割って戻す。
     // 潜るときのズームアウトにも追従させたいので atom ではなくカメラの実値を読む
     const base = state.size.height / VIEW_HEIGHT
