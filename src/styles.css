@@ -126,18 +126,37 @@ body {
   right: calc(var(--headline-right) - var(--reading-gap));
   transform: translateX(calc(100% + var(--node-pan-px)));
   max-width: max(0px, calc(var(--headline-right) - var(--reading-gap)));
-  writing-mode: vertical-rl;
   font-size: clamp(16px, 1.8vh, 20px);
   letter-spacing: 0.5em;
   color: var(--text-dim);
   line-height: 1.8;
-  max-height: 76vh;
+  height: 76vh;
   overflow: hidden;
   font-weight: 600;
+
+  /* 読みの箱と音訳の箱を縦に積む。帯そのものは横組みのままにして、
+     縦組みは中の箱それぞれが持つ（帯を縦組みにすると積む向きが横になる）。
+     右端で揃えるので、読みの 1 列目がいちばん大書に近い */
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+
+.overlay__reading-kana,
+.overlay__reading-sanskrit {
+  writing-mode: vertical-rl;
+  max-height: 100%;
+  overflow: hidden;
 }
 
 .overlay__reading p {
   margin: 4em 0 0 0.5em;
+}
+
+/* 音訳は帯の下端に揃えるので、天からの逃げは要らない */
+.overlay__reading-sanskrit p {
+  margin-top: 0;
 }
 
 .sanskrit__latin {

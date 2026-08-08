@@ -106,19 +106,25 @@ export function Overlay() {
             exit={{ opacity: 0, transition: { duration: 0.45, delay: 0 } }}
             transition={{ duration: 0.45, delay: appearDelay }}
           >
-            {/* 読みの列の切れ目は `/`。大書の label と同じ約束で、どこで折るかは
-                コンテンツ側（`content/graph/*.yaml` の reading）が決める。
-                列の中の空白はそのまま出す */}
-            {splitColumns(node.reading).map((part, i) => (
-              <p key={i} className="reading">
-                {part}
-              </p>
-            ))}
+            {/* 読みとサンスクリット音訳は別の箱。読みは帯の上、音訳は帯の下に置く。
+                同じ箱に入れると `/` で読みが 2 列になったとき音訳が 3 列目に回る */}
+            <div className="overlay__reading-kana">
+              {/* 読みの列の切れ目は `/`。大書の label と同じ約束で、どこで折るかは
+                  コンテンツ側（`content/graph/*.yaml` の reading）が決める。
+                  列の中の空白はそのまま出す */}
+              {splitColumns(node.reading).map((part, i) => (
+                <p key={i} className="reading">
+                  {part}
+                </p>
+              ))}
+            </div>
             {node.sanskrit && (
-              <p className="sanskrit">
-                <span className="sanskrit__kana">{node.sanskrit.kana}</span>
-                <span className="sanskrit__latin">{node.sanskrit.text}</span>
-              </p>
+              <div className="overlay__reading-sanskrit">
+                <p className="sanskrit">
+                  <span className="sanskrit__kana">{node.sanskrit.kana}</span>
+                  <span className="sanskrit__latin">{node.sanskrit.text}</span>
+                </p>
+              </div>
             )}
           </motion.div>
         )}
