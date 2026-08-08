@@ -54,11 +54,14 @@ export const currentDocAtom = atom((get) => docById(get(currentNodeAtom).id) ?? 
 export const isRootAtom = atom((get) => get(currentNodeAtom).id === root.id)
 
 /**
- * 戻る演出のあいだ、いま出ているテキストはもう用済み。
- * `nodeId` は `settled` まで出発点を指し続けるので、それを待つと退場が演出の終わりまで遅れる。
- * 相の開始と同時に引くための判定をここに置く（潜るときは新しい字が出るまで残す）。
+ * 遷移のあいだ、いま出ているテキストはもう用済み。潜るときも戻るときも次の面に持ち越さない。
+ * `nodeId` は `settled` まで出発点を指し続けるので、それを待つと退場が演出の終わりまで遅れ、
+ * 字が散っていくあいだ本文だけが残ってから消えることになる。相の開始と同時に引く。
  */
-export const leavingAtom = atom((get) => get(navAtom).phase === 'zooming-out')
+export const leavingAtom = atom((get) => {
+  const phase = get(navAtom).phase
+  return phase === 'zooming-out' || phase === 'zooming-in'
+})
 
 /**
  * 戻る先が根か。現在位置インジケータは深さの表示なので、まだ深いところへ戻るあいだは
