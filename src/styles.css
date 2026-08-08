@@ -268,11 +268,12 @@ body {
 }
 
 .overlay__doc rt {
-  font-size: 0.5em;
+  font-size: 0.6em;
   line-height: 1;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.03em;
   /* 本文よりわずかに退かせる。読みの補助であって本文ではない */
   color: var(--text-dim);
+  font-weight: 600;
 }
 
 /* --- 関連語句 --------------------------------------------------------------- */
