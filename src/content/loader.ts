@@ -131,6 +131,18 @@ const adjacency: ReadonlyMap<string, readonly string[]> = (() => {
   return table
 })()
 
+/**
+ * このノードを帰属先（`anchor`）にしている隣接ノード。**向きを持つ片側だけ**を返す。
+ *
+ * `relatedOf` は対称化した表を引くので、他の枝の語まで混ざる。
+ * 「この層を見終えたか」を測るには、その層に属すると宣言した語だけが要る。
+ */
+export function anchoredOf(node: GraphNode): GraphNode[] {
+  return [...nodes.values()]
+    .filter((n) => n.anchor === node.id)
+    .sort((a, b) => a.id.localeCompare(b.id))
+}
+
 /** 関連語句として並べる隣接ノード。木の子は含まない */
 export function relatedOf(node: GraphNode): GraphNode[] {
   return (adjacency.get(node.id) ?? []).flatMap((id) => {

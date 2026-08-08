@@ -4,7 +4,15 @@ import { Stage } from './scene/Stage.tsx'
 import { Overlay } from './overlay/Overlay.tsx'
 import { PaperFallback } from './overlay/PaperFallback.tsx'
 import { useHashRouting } from './nav/router.ts'
-import { tierAtom, phaseAtom, isRootAtom, audioStartedAtom, bgmVolumeAtom } from './nav/atoms.ts'
+import {
+  tierAtom,
+  phaseAtom,
+  isRootAtom,
+  audioStartedAtom,
+  bgmVolumeAtom,
+  currentNodeAtom,
+  markVisitedAtom,
+} from './nav/atoms.ts'
 import { usePanZoomGesture, useNodePanSpring, panXAtom, panBoundsAtom } from './world/pan.ts'
 import { VIEW_HEIGHT } from './world/paper.ts'
 import { startAudio, playWoosh } from './audio/index.ts'
@@ -20,6 +28,7 @@ export function App() {
   useHashRouting()
   useFirstGestureAudio(containerRef)
   useWooshOnTransition(phase)
+  useVisitLog()
 
   // Tier 3 の紙面は DOM の段組みなので拡大に追従できない。そこではパンだけを許す。
   // L1 以降（node）は拡大を持たず、左右のパンだけが効く
@@ -70,6 +79,21 @@ function useFirstGestureAudio(target: React.RefObject<HTMLElement | null>): void
       element.removeEventListener('keydown', onFirst)
     }
   }, [target, setStarted])
+}
+
+/**
+ * 読破の記録。演出が終わって面が落ち着いたところ（`idle`）で、いま出ているノードを訪問済みにする。
+ * 遷移中に書くと、途中で引き返した行き先まで訪れたことになる。
+ */
+function useVisitLog(): void {
+  const phase = useAtomValue(phaseAtom)
+  const current = useAtomValue(currentNodeAtom)
+  const mark = useSetAtom(markVisitedAtom)
+
+  useEffect(() => {
+    if (phase !== 'idle') return
+    mark(current.id)
+  }, [phase, current, mark])
 }
 
 /** ズーム遷移に woosh を重ねる。BGM は止めない */

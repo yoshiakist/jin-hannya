@@ -29,8 +29,20 @@ export const FOCUS = new Color('#ffd08a')
 export const FOCUS_GLOW = new Color('#ffb85c')
 export const STROKE = new Color('#f2f0ec')
 
+/**
+ * 読破の痕跡。**琥珀以外で唯一足した有彩色**で、役割は琥珀とはっきり分かれる。
+ *   琥珀（FOCUS）… いま触れている＝一時的な状態
+ *   青白（VISITED）… もう掘り切った＝残り続ける痕跡
+ * 彩度を落として墨と地続きに見せる（→ skill: ink-visuals「読破の青白」）。
+ */
+export const VISITED = new Color('#9ec4f5')
+export const VISITED_GLOW = new Color('#5b9bf2')
+
 /** 紙面の地の文字。フォーカスされていない字はここまで落とす */
 export const INK_RESTING = INK.clone().multiplyScalar(0.55)
+
+/** 読破の青白も、他所を触っているあいだは墨と同じだけ沈む */
+export const VISITED_RESTING = VISITED.clone().multiplyScalar(0.55)
 
 /**
  * フォーカスの明滅にかける時間（秒）。光るのも、まわりが沈むのも同じ長さで動かす。

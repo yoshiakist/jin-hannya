@@ -6,7 +6,16 @@
 import { atom } from 'jotai'
 import { atomWithReducer } from 'jotai/utils'
 import { reduce, initialState, acceptsInput, direction, type NavState, type NavEvent } from './fsm.ts'
-import { root, nodeById, ancestryOf, childrenOf, relatedOf, docById } from '../content/loader.ts'
+import {
+  root,
+  nodeById,
+  ancestryOf,
+  childrenOf,
+  relatedOf,
+  docById,
+  SUTRA_INDEX_TO_NODE,
+} from '../content/loader.ts'
+import { loadVisited, saveVisited, completedIds } from './progress.ts'
 import { detectTier, type Tier } from '../scene/tier.ts'
 import type { GraphNode } from '../content/schema.ts'
 
@@ -78,6 +87,41 @@ export const leavingToRootAtom = atom((get) => {
   if (state.phase !== 'zooming-out') return false
   const target = state.pendingId ? nodeById(state.pendingId) : null
   return !target || ancestryOf(target).length <= 1
+})
+
+// --- 読破の記録 -------------------------------------------------------------
+
+/** 訪れたノード id。localStorage から復元し、書くたびに焼き直す（→ src/nav/progress.ts） */
+export const visitedAtom = atom<ReadonlySet<string>>(loadVisited())
+
+/** 1 ノードを訪問済みにする。既に入っていれば何もしない（再描画を起こさない） */
+export const markVisitedAtom = atom(null, (get, set, id: string) => {
+  const current = get(visitedAtom)
+  if (current.has(id)) return
+  const next = new Set(current)
+  next.add(id)
+  set(visitedAtom, next)
+  saveVisited(next)
+})
+
+/**
+ * 読破したノード id。規定の深さ（`READ_DEPTH`、枝が浅ければその最深）まで下りた語だけが入る。
+ * L0 はこれを引いて、その語の `range` の字を青白く灯す。
+ */
+export const completedIdsAtom = atom<ReadonlySet<string>>((get) => completedIds(get(visitedAtom)))
+
+/**
+ * 全文の文字インデックス → その字が読破済みの語に属するか。
+ * hover の光り方（`highlightRangeAtom`）と同じく、L0 で見えるのは根の子の `range` だけ。
+ */
+export const visitedIndicesAtom = atom<Float32Array>((get) => {
+  const completed = get(completedIdsAtom)
+  const array = new Float32Array(SUTRA_INDEX_TO_NODE.length)
+  for (let i = 0; i < array.length; i++) {
+    const id = SUTRA_INDEX_TO_NODE[i]
+    array[i] = id != null && completed.has(id) ? 1 : 0
+  }
+  return array
 })
 
 // --- 実行環境 ---------------------------------------------------------------

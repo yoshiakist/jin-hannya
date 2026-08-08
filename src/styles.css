@@ -17,6 +17,8 @@
   /* 状態 */
   --focus: #ffd08a; /* hover / 選択の琥珀 */
   --focus-glow: #ffb85c; /* グローの芯 */
+  --visited: #9ec4f5; /* 読破した語。琥珀＝いまの操作、青白＝残る痕跡 */
+  --visited-glow: #5b9bf2;
 
   /* 図形 */
   --stroke: rgb(242 240 236 / 0.55);
@@ -556,6 +558,14 @@ body {
     color 0.4s ease,
     opacity 0.4s ease,
     text-shadow 0.4s ease;
+}
+
+/* 読破の痕跡。触れているあいだは琥珀（.is-focused）が上書きするので、先に置く */
+.paper-fallback__char.is-visited {
+  color: var(--visited);
+  text-shadow:
+    0 0 3px rgb(91 155 242 / 0.5),
+    0 0 10px rgb(91 155 242 / 0.3);
 }
 
 .paper-fallback__char.is-dimmed {

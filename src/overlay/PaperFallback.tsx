@@ -9,13 +9,15 @@
 import { useMemo } from 'react'
 import { useAtomValue, useSetAtom } from 'jotai'
 import { SUTRA_CHARS, cellOf } from '../content/sutra.ts'
-import { navAtom, acceptsInputAtom } from '../nav/atoms.ts'
+import { navAtom, acceptsInputAtom, completedIdsAtom } from '../nav/atoms.ts'
 import { root, childrenOf } from '../content/loader.ts'
 
 export function PaperFallback() {
   const dispatch = useSetAtom(navAtom)
   const accepts = useAtomValue(acceptsInputAtom)
   const hoveredId = useAtomValue(navAtom).hoveredId
+  /** 読破した語。GPU レイヤーの青白（Paper.tsx）に対応する DOM 側の表現 */
+  const completed = useAtomValue(completedIdsAtom)
 
   /** 文字インデックス → 潜り先ノード id。Paper.tsx と同じ表を DOM 側でも引く */
   const indexToNode = useMemo(() => {
@@ -43,10 +45,11 @@ export function PaperFallback() {
           {column.map(({ index, char }) => {
             const id = indexToNode[index]
             const focused = id !== null && id === hoveredId
+            const visited = id != null && completed.has(id)
             return (
               <span
                 key={index}
-                className={`paper-fallback__char${focused ? ' is-focused' : ''}${hoveredId && !focused ? ' is-dimmed' : ''}`}
+                className={`paper-fallback__char${visited ? ' is-visited' : ''}${focused ? ' is-focused' : ''}${hoveredId && !focused ? ' is-dimmed' : ''}`}
                 onPointerEnter={() => accepts && dispatch({ type: 'hover', id: id ?? null })}
                 onClick={() => accepts && id && dispatch({ type: 'enter', id })}
               >

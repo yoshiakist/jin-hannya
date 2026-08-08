@@ -9,7 +9,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, type ThreeEvent } from '@react-three/fiber'
 import { useAtomValue, useSetAtom } from 'jotai'
-import { InstancedBufferAttribute, InstancedMesh, Object3D, PlaneGeometry } from 'three'
+import { InstancedBufferAttribute, InstancedMesh, Object3D, PlaneGeometry, type Color } from 'three'
 import { MeshBasicNodeMaterial } from 'three/webgpu'
 import { attribute, mix, uniform, vec3 } from 'three/tsl'
 import { SUTRA_CHARS, COLS_PER_LINE, GRID_COLUMNS, indexAt } from '../content/sutra.ts'
@@ -18,6 +18,9 @@ import {
   INK,
   INK_RESTING,
   FOCUS,
+  VISITED,
+  VISITED_RESTING,
+  VISITED_GLOW,
   GLOW_PLANE,
   createGlowMaterial,
   inkDensity,
@@ -28,13 +31,19 @@ import {
   transitionAlpha,
 } from './materials.ts'
 import { CELL_X, CELL_Y, GLYPH_SIZE, gridPosition } from '../world/paper.ts'
-import { navAtom, acceptsInputAtom } from '../nav/atoms.ts'
+import { navAtom, acceptsInputAtom, visitedIndicesAtom } from '../nav/atoms.ts'
 import { SUTRA_INDEX_TO_NODE } from '../content/loader.ts'
 import { carriedNodeId } from './carry.ts'
 import { swayAt, swayPhase } from './sway.ts'
 
 /** 滲みの最大の濃さ */
 const GLOW_STRENGTH = 0.5
+
+/**
+ * 読破の青白の濃さ。触れている字の琥珀（`GLOW_STRENGTH`）よりはっきり弱くする。
+ * ここを上げると紙面がイルミネーションになり、いま触れている字が読み取れなくなる。
+ */
+const VISITED_GLOW_STRENGTH = 0.38
 
 interface CharGroup {
   char: string
@@ -63,8 +72,16 @@ function paperInk(): MeshBasicNodeMaterial {
   if (sharedInk) return sharedInk
   const material = new MeshBasicNodeMaterial({ transparent: true, toneMapped: false })
   const focused = attribute<'float'>('aFocus', 'float')
+  // 1 = 読破した語に属する字。hover と同じ経路で色を差し替えるので、シェーダは 1 本のまま
+  const explored = attribute<'float'>('aVisited', 'float')
   const resting = mix(vec3(INK.r, INK.g, INK.b), vec3(INK_RESTING.r, INK_RESTING.g, INK_RESTING.b), dim)
-  const base = mix(resting, vec3(FOCUS.r, FOCUS.g, FOCUS.b), focused)
+  const restingVisited = mix(
+    vec3(VISITED.r, VISITED.g, VISITED.b),
+    vec3(VISITED_RESTING.r, VISITED_RESTING.g, VISITED_RESTING.b),
+    dim,
+  )
+  // 触れているあいだは琥珀が勝つ。読破の青白は痕跡なので、いまの操作の色に譲る
+  const base = mix(mix(resting, restingVisited, explored), vec3(FOCUS.r, FOCUS.g, FOCUS.b), focused)
   // 墨のムラ。光っている字ではムラを浅くして、発光の芯が抜けないようにする
   const density = mix(inkDensity(attribute<'float'>('aSeed', 'float')), 1, focused.mul(0.7))
   material.colorNode = base.mul(inkShade(density))
@@ -88,6 +105,8 @@ function paperInk(): MeshBasicNodeMaterial {
  */
 export function Paper({ live = true }: { live?: boolean }) {
   const hoveredId = useAtomValue(navAtom).hoveredId
+  /** 読破した語に属する字（0/1）。中身が変わるのは L1 以降から戻ってきたときだけ */
+  const visitedTargets = useAtomValue(visitedIndicesAtom)
 
   // 沈み込みは紙面で 1 つ。hover の変化そのものは行き先だけを書き、寄せるのはここ
   useFrame((_, delta) => {
@@ -112,8 +131,15 @@ export function Paper({ live = true }: { live?: boolean }) {
     <group>
       <HoverPlane indexToNode={indexToNode} live={live} />
       <FocusGlow indexToNode={indexToNode} live={live} />
+      <VisitedGlow targets={visitedTargets} live={live} />
       {groups.map((group) => (
-        <CharInstances key={group.char} group={group} indexToNode={indexToNode} live={live} />
+        <CharInstances
+          key={group.char}
+          group={group}
+          indexToNode={indexToNode}
+          visitedTargets={visitedTargets}
+          live={live}
+        />
       ))}
     </group>
   )
@@ -130,20 +156,54 @@ function paperSway(index: number, t: number): { x: number; y: number; rotation: 
 }
 
 /**
- * フォーカスされた字の裏に焚く滲み。
+ * フォーカスされた字の裏に焚く滲み。行き先は hover から引く。
+ */
+function FocusGlow({ indexToNode, live }: { indexToNode: readonly (string | null)[]; live: boolean }) {
+  const hoveredId = useAtomValue(navAtom).hoveredId
+  const targets = useMemo(() => {
+    const array = new Float32Array(SUTRA_CHARS.length)
+    if (hoveredId !== null) {
+      for (let i = 0; i < array.length; i++) array[i] = indexToNode[i] === hoveredId ? 1 : 0
+    }
+    return array
+  }, [hoveredId, indexToNode])
+
+  return <SdfGlow targets={targets} strength={GLOW_STRENGTH} live={live} />
+}
+
+/**
+ * 読破した語の字に灯りっぱなしの滲み。hover の琥珀と同じ仕掛けで、色と強さだけが違う。
+ * 明滅させず、触っていなくても点いたままにする（狙いは「もう見た」の痕跡であって、誘目ではない）。
+ */
+function VisitedGlow({ targets, live }: { targets: Float32Array; live: boolean }) {
+  return <SdfGlow targets={targets} color={VISITED_GLOW} strength={VISITED_GLOW_STRENGTH} live={live} />
+}
+
+/**
+ * 字の裏に焚く滲み 1 層。
  *
  * 字ごとに持たせると描画呼び出しが倍になるので、紙面ぜんぶで 1 つのメッシュにまとめる。
  * 板は矩形だが、光の形は字ごとの符号付き距離場（`createGlowMaterial`）が決めるので、
  * どの字も同じ丸い光にはならず、滲みの縁が字形をなぞる。
+ *
+ * `targets` は字ごとの行き先（0〜1）。値は書き換えず、フレーム側で寄せる。
  */
-function FocusGlow({ indexToNode, live }: { indexToNode: readonly (string | null)[]; live: boolean }) {
+function SdfGlow({
+  targets,
+  color,
+  strength,
+  live,
+}: {
+  targets: Float32Array
+  color?: Color
+  strength: number
+  live: boolean
+}) {
   const meshRef = useRef<InstancedMesh>(null)
   const dummy = useMemo(() => new Object3D(), [])
-  const nav = useAtomValue(navAtom)
   const count = SUTRA_CHARS.length
 
   const focus = useMemo(() => new InstancedBufferAttribute(new Float32Array(count), 1), [count])
-  const focusTarget = useMemo(() => new Float32Array(count), [count])
 
   /** 字ごとの距離場アトラスのセル番号。グリフが無い字は -1（マテリアル側で消える） */
   const cell = useMemo(() => {
@@ -166,19 +226,12 @@ function FocusGlow({ indexToNode, live }: { indexToNode: readonly (string | null
     () =>
       createGlowMaterial(
         attribute<'float'>('aCell', 'float'),
-        attribute<'float'>('aFocus', 'float').mul(GLOW_STRENGTH),
-        { layer: paperOpacity },
+        attribute<'float'>('aFocus', 'float').mul(strength),
+        { color, layer: paperOpacity },
       ),
-    [],
+    [color, strength],
   )
   useEffect(() => () => material.dispose(), [material])
-
-  // hover の変化は行き先を書くだけ。実際の濃さはフレーム側で寄せる
-  useEffect(() => {
-    for (let i = 0; i < count; i++) {
-      focusTarget[i] = nav.hoveredId !== null && indexToNode[i] === nav.hoveredId ? 1 : 0
-    }
-  }, [nav.hoveredId, indexToNode, focusTarget, count])
 
   useFrame(({ clock }, delta) => {
     const mesh = meshRef.current
@@ -188,7 +241,7 @@ function FocusGlow({ indexToNode, live }: { indexToNode: readonly (string | null
     const array = focus.array as Float32Array
     let moved = false
     for (let i = 0; i < count; i++) {
-      const next = approach(array[i]!, focusTarget[i]!, delta)
+      const next = approach(array[i]!, targets[i] ?? 0, delta)
       if (next !== array[i]) {
         array[i] = next
         moved = true
@@ -268,10 +321,13 @@ function HoverPlane({ indexToNode, live }: { indexToNode: readonly (string | nul
 function CharInstances({
   group,
   indexToNode,
+  visitedTargets,
   live,
 }: {
   group: CharGroup
   indexToNode: readonly (string | null)[]
+  /** 全文インデックス基準の 0/1。読破した語に属する字が 1 */
+  visitedTargets: Float32Array
   live: boolean
 }) {
   const meshRef = useRef<InstancedMesh>(null)
@@ -297,6 +353,16 @@ function CharInstances({
     [group.indices.length],
   )
 
+  /**
+   * 1 = 読破した語に属する字。フォーカスと同じく行き先を書いてフレーム側で寄せるので、
+   * 戻ってきた紙面では青白がじわりと点く（切り替わりが瞬時だと紙面が点滅して見える）。
+   */
+  const visited = useMemo(
+    () => new InstancedBufferAttribute(new Float32Array(group.indices.length), 1),
+    [group.indices.length],
+  )
+  const visitedTarget = useMemo(() => new Float32Array(group.indices.length), [group.indices.length])
+
   /** 墨のムラの種。同じ字が紙面に何度出ても違うムラになるよう、全文インデックスから引く */
   const seed = useMemo(() => {
     const array = new Float32Array(group.indices.length)
@@ -314,8 +380,9 @@ function CharInstances({
     base.setAttribute('aFocus', focus)
     base.setAttribute('aSeed', seed)
     base.setAttribute('aPersist', persist)
+    base.setAttribute('aVisited', visited)
     return base
-  }, [group.char, focus, seed, persist])
+  }, [group.char, focus, seed, persist, visited])
 
   // シェーダは紙面で 1 本を共有する（字ごとに組み直さない）
   const material = paperInk()
@@ -326,6 +393,13 @@ function CharInstances({
       focusTarget[i] = nav.hoveredId !== null && indexToNode[index] === nav.hoveredId ? 1 : 0
     })
   }, [nav.hoveredId, group.indices, indexToNode, focusTarget])
+
+  // 読破は L1 以降で増えるので、戻ってきたときに 1 度だけ拾えばよい
+  useEffect(() => {
+    group.indices.forEach((index, i) => {
+      visitedTarget[i] = visitedTargets[index] ?? 0
+    })
+  }, [visitedTargets, group.indices, visitedTarget])
 
   useFrame(({ clock }, delta) => {
     const mesh = meshRef.current
@@ -343,6 +417,18 @@ function CharInstances({
       }
     }
     if (moved) focus.needsUpdate = true
+
+    // 読破の青白も同じ速さで寄せる。増えるのは戻ってきた瞬間だけなので、たいていは空振りで抜ける
+    const visitedArray = visited.array as Float32Array
+    let lit = false
+    for (let i = 0; i < visitedArray.length; i++) {
+      const next = approach(visitedArray[i]!, visitedTarget[i]!, delta)
+      if (next !== visitedArray[i]) {
+        visitedArray[i] = next
+        lit = true
+      }
+    }
+    if (lit) visited.needsUpdate = true
 
     // 持ち越される字（＝選んだ句）。相ではなく id の一致で決まるので毎フレーム引き直す
     const carried = carriedNodeId()

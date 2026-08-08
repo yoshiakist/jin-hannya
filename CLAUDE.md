@@ -14,6 +14,7 @@
 | パンと拡大 | `pan-zoom` |
 | 色・墨・ゆらぎ・グロー・グリフ前計算 | `ink-visuals` |
 | FSM・URL・インジケータ・左矢印 | `navigation-fsm` |
+| 読破の記録（青白く灯る紙面） | `reading-progress` |
 | 音 | `audio-design` |
 | 2 レイヤー合成・性能ティア・技術スタック | `perf-tier` |
 
@@ -75,7 +76,8 @@ assets/     svg/(筆文字127) pattern/circle.svg bgm/ sfx/ voice/(未収録)
 - `reading` の切れ目も **`/`**（`label` と同じ約束。列の中の空白はそのまま出る）。読みは大書の右、サマリーは大書の左、本文はさらにその左に置く。x は `overlayInsets()` が出す 3 つの目印（大書の左右端・図の左端）から CSS が組むので、間合いを変えるときは `.overlay` の `--reading-gap` / `--summary-gap` / `--doc-gap` を触る。
 - パンは深度で別勘定。L0 は `panXAtom`（＋拡大・縦送り）、**L1 以降は `nodePanXAtom` の左右だけ**。L1 以降のばねは atom 側に 1 つだけ置き、カメラは値をそのまま読む（カメラでも補間すると大書が DOM の本文に遅れてずれる）。本文は `max-width` で切り詰めず、はみ出したぶんはパンで補う。可動域は本文・サマリーの `offsetLeft` の実測から引く。
 - 円相は `assets/pattern/circle.svg` を使う。手続き的生成はしない。断片パス約 40 本も間引かない。
-- 色は `src/scene/materials.ts` と `src/styles.css` のトークンから引く。琥珀（`--focus`）以外の有彩色を足さない。
+- 色は `src/scene/materials.ts` と `src/styles.css` のトークンから引く。有彩色は**琥珀（`--focus`）と青白（`--visited`）の 2 つだけ**で、これ以上足さない。琥珀 = いま触れている一時的な状態、青白 = もう下りた残り続ける痕跡（→ skill: `reading-progress`）。
+- **読破の判定はグラフから導く。YAML に完了条件の鍵を書かない。** 「L3（`READ_DEPTH`）まで下りたら読破、枝が浅ければその最深に丸める」で、深さの違いはグラフが既に持っている。保存するのは訪れた id だけで、読破したかどうかは保存しない。
 
 ## 既知の落とし穴（実装時に踏んだもの）
 
