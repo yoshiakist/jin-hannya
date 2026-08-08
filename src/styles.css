@@ -268,6 +268,9 @@ body {
   display: flex;
   align-items: flex-start;
   gap: 8px;
+  /* 本文は縦組みで左へ伸びてインジケータの上に来る（DOM 順では本文が後）。
+     手前に出して掴めるようにする */
+  z-index: 2;
   /* 筆文字ではなく通常書体。大書との役割を明確に分ける */
   font-family: var(--sans);
   font-size: clamp(16px, 1.6vh, 18px);
@@ -281,11 +284,18 @@ body {
 
 .breadcrumb ol {
   margin: 0;
-  padding: 0;
+  /* 敷きの暗がりのぶんだけ内へ逃がす */
+  padding: 0.6em 1.4em 0.9em 0.6em;
   list-style: none;
   display: flex;
   flex-direction: column;
   gap: 0.7em;
+  /* 左上が透明・右下が黒 70% の斜めグラデーション。裏を本文が通っても字が拾える */
+  background: linear-gradient(
+    to bottom right,
+    rgb(0 0 0 / 0) 0%,
+    rgb(0 0 0 / 0.7) 100%
+  );
 }
 
 .breadcrumb button {
