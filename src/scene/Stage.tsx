@@ -161,18 +161,18 @@ function FrameBudget() {
 
 function SceneContent() {
   const nav = useAtomValue(navAtom)
-  // 戻るときは**紙面を演出の始まりから置く**。90 字ぶんのインスタンスとシェーダの用意は
-  // 相が畳まれた瞬間に払うと数フレーム固まるので、粒子が凝集しているあいだに済ませておく。
-  // 出したまま薄いのは `paperOpacity`（Transition.tsx の `StageFade`）が 0 から立ち上げる。
-  const returning = nav.phase === 'zooming-out' && nav.pendingId === root.id
-  const showPaper = nav.nodeId === root.id || returning
+  // **紙面は一度組んだら畳まない。** 90 字ぶんのマテリアル・属性・描画オブジェクトの用意は
+  // マウントし直すたびに払うことになり、その 1 フレームで固まる（どこで固まるかが変わるだけで、
+  // 遷移の頭に置いても終わりに置いても同じ）。起動時＝読み込みの間に組み、
+  // 潜っているあいだは伏せておく（描かず、フレームの計算もせず、当たり判定にも出ない）。
+  // 戻りぎわは大書と紙面が同時に画面へ居るので、濃さは深度ごとに別のユニフォームで持つ。
+  const paperLive = nav.nodeId === root.id || (nav.phase === 'zooming-out' && nav.pendingId === root.id)
   const showNode = nav.nodeId !== root.id
   return (
     <>
       <CameraRig />
       <FrameBudget />
-      {/* 戻りぎわだけは 2 つが同時に居る。濃さは深度ごとに別のユニフォームで持つ */}
-      {showPaper && <Paper />}
+      <Paper live={paperLive} />
       {showNode && <NodeStage />}
       {/* 字の出入りは粒子と別勘定。Tier 3 でも尺を揃えるため Transition と分けて常に置く */}
       <StageFade />

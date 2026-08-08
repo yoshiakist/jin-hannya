@@ -78,11 +78,20 @@ function paperInk(): MeshBasicNodeMaterial {
   return material
 }
 
-export function Paper() {
+/**
+ * L0 の紙面。
+ *
+ * **`live` が false でも畳まない**（Stage.tsx）。組み直すと 90 字ぶんのマテリアルと
+ * 描画オブジェクトを 1 フレームで用意することになり、そこで固まる。
+ * 潜っているあいだは描かず、フレームの計算もせず、当たり判定にも出ないだけにして、
+ * GPU 側の用意はそのまま温めておく。
+ */
+export function Paper({ live = true }: { live?: boolean }) {
   const hoveredId = useAtomValue(navAtom).hoveredId
 
   // 沈み込みは紙面で 1 つ。hover の変化そのものは行き先だけを書き、寄せるのはここ
   useFrame((_, delta) => {
+    if (!live) return
     dim.value = approach(dim.value, hoveredId ? 1 : 0, delta)
   })
 
@@ -101,10 +110,10 @@ export function Paper() {
 
   return (
     <group>
-      <HoverPlane indexToNode={indexToNode} />
-      <FocusGlow indexToNode={indexToNode} />
+      <HoverPlane indexToNode={indexToNode} live={live} />
+      <FocusGlow indexToNode={indexToNode} live={live} />
       {groups.map((group) => (
-        <CharInstances key={group.char} group={group} indexToNode={indexToNode} />
+        <CharInstances key={group.char} group={group} indexToNode={indexToNode} live={live} />
       ))}
     </group>
   )
@@ -127,7 +136,7 @@ function paperSway(index: number, t: number): { x: number; y: number; rotation: 
  * 板は矩形だが、光の形は字ごとの符号付き距離場（`createGlowMaterial`）が決めるので、
  * どの字も同じ丸い光にはならず、滲みの縁が字形をなぞる。
  */
-function FocusGlow({ indexToNode }: { indexToNode: readonly (string | null)[] }) {
+function FocusGlow({ indexToNode, live }: { indexToNode: readonly (string | null)[]; live: boolean }) {
   const meshRef = useRef<InstancedMesh>(null)
   const dummy = useMemo(() => new Object3D(), [])
   const nav = useAtomValue(navAtom)
@@ -173,7 +182,7 @@ function FocusGlow({ indexToNode }: { indexToNode: readonly (string | null)[] })
 
   useFrame(({ clock }, delta) => {
     const mesh = meshRef.current
-    if (!mesh) return
+    if (!mesh || !live) return
     const t = clock.elapsedTime
 
     const array = focus.array as Float32Array
@@ -198,7 +207,7 @@ function FocusGlow({ indexToNode }: { indexToNode: readonly (string | null)[] })
     mesh.instanceMatrix.needsUpdate = true
   })
 
-  return <instancedMesh ref={meshRef} args={[geometry, material, count]} frustumCulled={false} />
+  return <instancedMesh ref={meshRef} args={[geometry, material, count]} visible={live} frustumCulled={false} />
 }
 
 /**
@@ -206,7 +215,7 @@ function FocusGlow({ indexToNode }: { indexToNode: readonly (string | null)[] })
  * ポインタ位置をワールド座標から格子インデックスへ落とすことで hover 判定にする。
  * 276 個の当たり判定を持たせるより安く、範囲が列をまたいでも破綻しない。
  */
-function HoverPlane({ indexToNode }: { indexToNode: readonly (string | null)[] }) {
+function HoverPlane({ indexToNode, live }: { indexToNode: readonly (string | null)[]; live: boolean }) {
   const dispatch = useSetAtom(navAtom)
   const accepts = useAtomValue(acceptsInputAtom)
 
@@ -235,6 +244,9 @@ function HoverPlane({ indexToNode }: { indexToNode: readonly (string | null)[] }
     <mesh
       // 紙面はワールド固定。パンはカメラ側で行うのでここは動かさない
       position={[-((columns - 1) * CELL_X) / 2, 0, -0.5]}
+      // 潜っているあいだは伏せる。ここだけは visible={false} でよい
+      // （レイキャストから外れるのが目的。L1 以降で紙面の hover を拾わせない）
+      visible={live}
       onPointerMove={onPointerMove}
       onPointerOut={() => dispatch({ type: 'hover', id: null })}
       onClick={onClick}
@@ -253,7 +265,15 @@ function HoverPlane({ indexToNode }: { indexToNode: readonly (string | null)[] }
  * WebGPURenderer のノードマテリアル経路では instanceColor が期待どおりに効かないためで、
  * 属性を自前で持てば Tier 1 / Tier 2 のどちらでも同じ結果になる。
  */
-function CharInstances({ group, indexToNode }: { group: CharGroup; indexToNode: readonly (string | null)[] }) {
+function CharInstances({
+  group,
+  indexToNode,
+  live,
+}: {
+  group: CharGroup
+  indexToNode: readonly (string | null)[]
+  live: boolean
+}) {
   const meshRef = useRef<InstancedMesh>(null)
   const dummy = useMemo(() => new Object3D(), [])
   const nav = useAtomValue(navAtom)
@@ -309,7 +329,7 @@ function CharInstances({ group, indexToNode }: { group: CharGroup; indexToNode: 
 
   useFrame(({ clock }, delta) => {
     const mesh = meshRef.current
-    if (!mesh) return
+    if (!mesh || !live) return
     const t = clock.elapsedTime
 
     // フォーカス量を行き先へ寄せる。全インスタンスが行き先に着いていれば転送を省く
@@ -350,5 +370,12 @@ function CharInstances({ group, indexToNode }: { group: CharGroup; indexToNode: 
 
   if (!geometry) return null
 
-  return <instancedMesh ref={meshRef} args={[geometry, material, group.indices.length]} frustumCulled={false} />
+  return (
+    <instancedMesh
+      ref={meshRef}
+      args={[geometry, material, group.indices.length]}
+      visible={live}
+      frustumCulled={false}
+    />
+  )
 }
