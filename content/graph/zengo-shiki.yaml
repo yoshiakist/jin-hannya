@@ -1,0 +1,11 @@
+id: zengo-shiki
+kind: term
+label: 前五識
+reading: ぜんごしき
+sanskrit:
+  text: pañca-vijñāna
+  kana: パンチャ・ヴィジュニャーナ
+summary: 眼・耳・鼻・舌・身の五つの識をまとめた呼び名。いま目の前にあるものだけを、直接に受け取る層。
+parent: shiki-vijnana
+children: [gen-shiki, ni-shiki, bi-shiki, zetsu-shiki, shin-shiki]
+layout: circle

@@ -7,6 +7,7 @@
 | 観点 | skill |
 |---|---|
 | コンテンツモデル（`sutra.txt` / YAML / `range` / 検証） | `sutra-content` |
+| 原稿の深度別の役割・語り口（L1 簡訳 → L4 原義 → L5 教学） | `doc-writing` |
 | L0 の紙面・格子 | `paper-grid` |
 | L1 以降の画面文法・3 レイアウト・`overlayInsets` | `node-screen` |
 | 遷移演出（持ち越し・散開・凝集・尺） | `transition-fx` |
@@ -49,8 +50,8 @@ src/
             node-layout.ts(L1 以降の大書・図の寸法／DOM 用の目印 overlayInsets)
   audio/    index.ts
 scripts/    build-glyphs.ts svg-path.ts sdf.ts(グロー用距離場) validate-graph.ts
-content/    sutra.txt / graph/*.yaml(15) / docs/*.md(15)
-assets/     svg/(筆文字118) pattern/circle.svg bgm/ sfx/ voice/(未収録)
+content/    sutra.txt / graph/*.yaml(18) / docs/*.md(18)
+assets/     svg/(筆文字123) pattern/circle.svg bgm/ sfx/ voice/(未収録)
 ```
 
 **2 レイヤー合成: 組版は DOM、絵は GPU。** 縦組みの長文は `writing-mode: vertical-rl` の DOM オーバーレイ、

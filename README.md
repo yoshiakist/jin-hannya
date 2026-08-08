@@ -72,9 +72,9 @@ src/
   audio/    index.ts
   generated/  build-glyphs.ts の出力（索引）。コミットしない
 scripts/    build-glyphs.ts svg-path.ts sdf.ts validate-graph.ts
-content/    sutra.txt / graph/*.yaml(15) / docs/*.md(15)
+content/    sutra.txt / graph/*.yaml(18) / docs/*.md(18)
 public/     glyphs/  build-glyphs.ts の出力（mesh/particles/sdf）。コミットしない
-assets/     svg/(筆文字118) pattern/circle.svg bgm/ sfx/ voice/(未収録)
+assets/     svg/(筆文字123) pattern/circle.svg bgm/ sfx/ voice/(未収録)
 docs/       設計資料
 sample_image/  PC モック 3 枚（参照用）
 ```
