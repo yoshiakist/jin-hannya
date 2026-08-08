@@ -89,6 +89,11 @@ const GraphNodeFields = z.object({
   range: Range.optional(),
   /** assets/voice/ 配下のファイル名。未収録なら省略 */
   audio: z.string().optional(),
+  /**
+   * 原稿（`summary` と `docs/*.md`）が AI 生成のままで、人手の監修を経ていないこと。
+   * 監修が入ったら**この行を消す**（false を書き足さない）。既定は false。
+   */
+  ai_generated: z.boolean().default(false),
 })
 
 /**

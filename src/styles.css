@@ -239,6 +239,21 @@ body {
   text-indent: 1em;
 }
 
+/* 監修の断り（`ai_generated`）。本文の一段落目として右上に組む。
+   本文より小さく退かせるが、hover やタップを要さず常に出る。読まれないなら断りの意味がない */
+.overlay__doc-note {
+  margin: 0 0 1.9em 0.7em;
+  text-indent: 0;
+  font-size: 0.82em;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+
+/* 2 字のラテン字は縦中横で立てる。縦組みで寝かせると本文の中で目立ちすぎる */
+.tcy {
+  text-combine-upright: all;
+}
+
 /* 括弧類で始まる段落。約物が空きを持つので字下げを重ねない */
 .overlay__doc p.overlay__doc-flush {
   text-indent: 0;

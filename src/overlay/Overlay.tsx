@@ -168,6 +168,15 @@ export function Overlay() {
             exit={{ opacity: 0, transition: { duration: 0.5, delay: 0 } }}
             transition={{ duration: 0.5, delay: appearDelay + 0.12 }}
           >
+            {/* 監修の断り。本文の頭（右上）に置く。読み方を調整するための情報なので、
+                読み終えてからでは遅い。記号ではなく字で言う（アイコンは新しい記号の系列を
+                作ってしまい、琥珀＝いまの操作・青白＝痕跡の 2 色の約束の外に出る）。
+                無印が既定で、印が付くのは例外の側 —— 監修が済めば YAML の行ごと消える */}
+            {node.ai_generated && (
+              <p className="overlay__doc-note">
+                この解説は <span className="tcy">AI</span> が下書きしたまま、人手の監修を経ていない。
+              </p>
+            )}
             {parseBlocks(doc.body).map((block, i) =>
               block.type === 'list' ? (
                 <ul key={i}>
