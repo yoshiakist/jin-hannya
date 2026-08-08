@@ -269,8 +269,12 @@ function useNodePan(destinationId: string, elements: (HTMLElement | null)[], dep
     // はみ出しているときは、左端が余白ぶん入り込むところまで送れるようにする
     const overflow = left < 0 ? DOC_EDGE_PX - left : 0
     setRange(overflow * unitsPerPixel(1))
-    // elements は毎回新しい配列になるので、測り直す条件は deps 側に列挙する
-  }, [setRange, ...deps])
+    // 測る対象そのものを条件に入れる。要素は ref コールバック経由の state なので、
+    // マウントしたレンダーではまだ null で、入った次のレンダーで測り直す必要がある。
+    // 同じノードへ 2 度目に入ると `deps`（ノード・画面寸法・幅）はどれも前回と同じ値に
+    // なるため、要素の同一性を見ないと測り直しが起きず可動域が 0 のまま固まる。
+    // 配列は毎回新しくなるので中身を並べる（要素の本数はレンダーによらず一定）
+  }, [setRange, ...elements, ...deps])
 
   // ワールド単位のパン量を px へ直す。左へ送る（負）と本文は右へ動く
   return (-pan * (globalThis.innerHeight || 0)) / VIEW_HEIGHT
