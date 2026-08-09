@@ -235,7 +235,7 @@ body {
 }
 
 .overlay__doc p {
-  margin: 0 0 1.6em 0.7em;
+  margin: 0 0 1.6em 0;
   text-indent: 1em;
 }
 
@@ -257,6 +257,15 @@ body {
 /* 括弧類で始まる段落。約物が空きを持つので字下げを重ねない */
 .overlay__doc p.overlay__doc-flush {
   text-indent: 0;
+}
+
+/* 大段落の切れ目（原稿の `---`）。縦組みの一行アキで示し、罫線は引かない。
+   段落は字下げだけで示していて隙間が無いので、一行ぶん空けば十分に切れて見える。
+   縦組みでは行が右から左へ進むので、間合いは block 方向（＝水平）に置く。
+   `p` の margin ショートハンドが block-start を 0 で上書きするため、詳細度を合わせる */
+.overlay__doc p.overlay__doc-section,
+.overlay__doc ul.overlay__doc-section {
+  margin-block-start: 1lh;
 }
 
 /* 箇条書き。縦組みでは既定のマーカーの位置がブラウザごとに揺れるので、

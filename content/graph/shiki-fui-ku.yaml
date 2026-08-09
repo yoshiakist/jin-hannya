@@ -1,0 +1,8 @@
+id: shiki-fui-ku
+kind: phrase
+label: 色不異空
+reading: しき ふい くう
+summary: 物や形には、それ単独では実体がない。
+parent: shikihuiku-to-kusokuzeshiki
+layout: none
+range: [38, 42]

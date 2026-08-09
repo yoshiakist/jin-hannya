@@ -1,0 +1,8 @@
+id: shiki-sokuze-ku
+kind: phrase
+label: 色即是空
+reading: しき そくぜ くう
+summary: 物や形というのがまさに、関係性によってしか成り立たない空の現れである。
+parent: shikihuiku-to-kusokuzeshiki
+layout: none
+range: [46, 50]

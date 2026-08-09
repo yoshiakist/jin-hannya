@@ -10,6 +10,13 @@
 /** 箇条書きの行頭。半角ハイフン + 空白 */
 const BULLET = /^[-*]\s+/
 
+/**
+ * 大段落の切れ目。ハイフン 3 つ以上だけの行（Markdown の thematic break）。
+ * 空白を伴わないので `BULLET` とは衝突しない。frontmatter の `---` は
+ * ローダが先頭で切り落とした後なので本文には残らない。
+ */
+const SECTION_BREAK = /^[-*_]{3,}$/
+
 /** 段落の行頭に来る括弧類。約物自身が 1 字ぶんの空きを持つので字下げは要らない */
 const OPENING_BRACKET = /^[（｛〈《【「『［〔〝]/
 
@@ -18,12 +25,20 @@ export function startsWithBracket(text: string): boolean {
   return OPENING_BRACKET.test(text)
 }
 
-export interface Paragraph {
+/**
+ * 大段落の頭か。原稿の `---` は独立した要素にせず、**直後のブロックの目印**として持つ。
+ * 縦組みで空の要素を挟むと、それ自体が組版の対象になって間合いが読めなくなる。
+ */
+interface SectionHead {
+  section?: true
+}
+
+export interface Paragraph extends SectionHead {
   type: 'paragraph'
   text: string
 }
 
-export interface List {
+export interface List extends SectionHead {
   type: 'list'
   items: string[]
 }
@@ -36,9 +51,20 @@ export type Block = Paragraph | List
  * 空行で区切ったうえで、ブロックの中でも箇条書きの行が続くところは `list` として切り出す。
  * 箇条書きの前後に空行が無い原稿でも同じ結果になるようにするため。
  * 段落の中の改行は原稿の折り返しなので、繋いで 1 つの文字列にする。
+ * `---` の行は大段落の切れ目で、次に出るブロックへ `section` として渡す。
  */
 export function parseBlocks(body: string): Block[] {
   const blocks: Block[] = []
+  /** 直前に `---` があったか。次のブロックに移し替えて降ろす */
+  let pending = false
+
+  /** 溜まっている大段落の目印を付けながらブロックを積む */
+  const push = (block: Block) => {
+    // 本文の頭の `---` は間合いの行き場が無いので捨てる
+    if (pending && blocks.length) block.section = true
+    pending = false
+    blocks.push(block)
+  }
 
   for (const chunk of body.split(/\n{2,}/)) {
     let lines: string[] = []
@@ -46,8 +72,8 @@ export function parseBlocks(body: string): Block[] {
 
     /** 溜まっている行を段落・箇条書きとして送り出す */
     const flush = () => {
-      if (bullets.length) blocks.push({ type: 'list', items: bullets })
-      if (lines.length) blocks.push({ type: 'paragraph', text: lines.join('') })
+      if (bullets.length) push({ type: 'list', items: bullets })
+      if (lines.length) push({ type: 'paragraph', text: lines.join('') })
       bullets = []
       lines = []
     }
@@ -55,7 +81,10 @@ export function parseBlocks(body: string): Block[] {
     for (const line of chunk.split('\n')) {
       const text = line.trim()
       if (!text) continue
-      if (BULLET.test(text)) {
+      if (SECTION_BREAK.test(text)) {
+        flush()
+        pending = true
+      } else if (BULLET.test(text)) {
         if (lines.length) flush()
         bullets.push(text.replace(BULLET, ''))
       } else {

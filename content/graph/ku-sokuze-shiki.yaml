@@ -1,0 +1,8 @@
+id: ku-sokuze-shiki
+kind: phrase
+label: 空即是色
+reading: くう そくぜ しき
+summary: 空という在り方がそのまま、目の前の物や形として現れている。
+parent: shikihuiku-to-kusokuzeshiki
+layout: none
+range: [50, 54]

@@ -179,7 +179,7 @@ export function Overlay() {
             )}
             {parseBlocks(doc.body).map((block, i) =>
               block.type === 'list' ? (
-                <ul key={i}>
+                <ul key={i} className={blockClass(block.section && 'overlay__doc-section')}>
                   {block.items.map((item, j) => (
                     <li key={j}>{renderRuby(item)}</li>
                   ))}
@@ -187,9 +187,10 @@ export function Overlay() {
               ) : (
                 <p
                   key={i}
-                  className={
-                    startsWithBracket(block.text) ? 'overlay__doc-flush' : undefined
-                  }
+                  className={blockClass(
+                    block.section && 'overlay__doc-section',
+                    startsWithBracket(block.text) && 'overlay__doc-flush',
+                  )}
                 >
                   {renderRuby(block.text)}
                 </p>
@@ -204,6 +205,12 @@ export function Overlay() {
       <LeftArrow />
     </div>
   )
+}
+
+/** 本文のブロックに付くクラス。大段落の頭と、字下げを抑える段落を重ねる */
+function blockClass(...names: (string | false | undefined)[]): string | undefined {
+  const list = names.filter((name): name is string => Boolean(name))
+  return list.length ? list.join(' ') : undefined
 }
 
 /**

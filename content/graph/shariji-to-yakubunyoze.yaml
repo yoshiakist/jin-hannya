@@ -1,0 +1,12 @@
+id: shariji-to-yakubunyoze
+kind: phrase
+label: 舎利子 / 色不異空空不異色 / 色即是空空即是色 / 受想行識亦復如是
+reading: しゃりし しきふいくう くうふいしき / しきそくぜくう くうそくぜしき / じゅそうぎょうしき やくぶにょぜ
+summary: シャーリよ、色と空とは違うものではない、色が空、空こそが色なのだ。受・想・行・識も同様である。 
+parent: shingyo
+children:
+  - shariji
+  - shikihuiku-to-kusokuzeshiki
+  - jusogyoshiki-to-yakubunyoze
+layout: none
+range: [35, 62]

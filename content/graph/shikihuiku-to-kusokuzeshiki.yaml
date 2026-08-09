@@ -1,0 +1,13 @@
+id: shikihuiku-to-kusokuzeshiki
+kind: phrase
+label: 色不異空空不異色 / 色即是空空即是色
+reading: しきふいくう くうふいしき / しきそくぜくう くうそくぜしき
+summary: 色は空と異ならず、空は色と異ならない。色はすなわち空であり、空こそがまさに色である。
+parent: shariji-to-yakubunyoze
+children:
+  - shiki-fui-ku
+  - ku-fui-shiki
+  - shiki-sokuze-ku
+  - ku-sokuze-shiki
+layout: column
+range: [38, 54]

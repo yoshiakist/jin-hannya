@@ -1,0 +1,11 @@
+id: shariji
+kind: term
+label: 舎利子
+reading: しゃりし
+sanskrit:
+  text: Śāriputra
+  kana: シャーリプトラ
+summary: 仏陀の一番弟子たるシャーリの息子
+parent: shariji-to-yakubunyoze
+layout: none
+range: [35, 38]
