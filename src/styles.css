@@ -104,7 +104,7 @@ body {
   /* 大書との間合い。読み・サマリー・本文の x はこの 3 つだけで動かせる */
   --reading-gap: clamp(15px, 1.6vw, 32px);
   --summary-gap: clamp(26px, 3.4vw, 64px);
-  --doc-gap: clamp(28px, 3.6vw, 68px);
+  --doc-gap: clamp(44px, 5.4vw, 104px);
   --related-gap: clamp(30px, 4vw, 76px);
 
   /* L1 以降のドラッグパン（Overlay.tsx が入れる）。組版を崩さないよう transform で当てる。

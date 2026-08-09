@@ -137,9 +137,17 @@ export const CIRCLE_DIAMETER = VIEW_HEIGHT * 0.58
  */
 const CIRCLE_SHIFT_PX = 60
 
+/**
+ * 縦連結だけ図の中心を左へ寄せる量（px）。
+ * 角丸枠は横に張るので、`DIAGRAM_X` のままだと右のサマリーとの間合いが詰まる。
+ * 左（本文との間合い）は `.overlay` の `--doc-gap` が持つので、ここは右側だけの調整。
+ */
+const COLUMN_SHIFT_PX = 60
+
 /** 図の中心 x。`layout` ごとの寄せを含む。描画・遷移・オーバーレイが同じ値を読む */
 export function diagramCenterX(node: GraphNode): number {
   if (node.layout === 'circle') return DIAGRAM_X - CIRCLE_SHIFT_PX * unitsPerPixel(1)
+  if (node.layout === 'column') return DIAGRAM_X - COLUMN_SHIFT_PX * unitsPerPixel(1)
   return DIAGRAM_X
 }
 
