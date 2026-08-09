@@ -287,6 +287,11 @@ function ChildNode({ item, order }: { item: DiagramItem; order: number }) {
   const chars = useMemo(() => Array.from(labelText(node.label)), [node.label])
 
   const { width, height } = frameSize(chars.length, size)
+  const along = size * chars.length * 1.3
+  const across = size * 1.6
+  const hitSize: [number, number] = frame
+    ? [Math.max(width, along), Math.max(height, across)]
+    : [Math.max(width, across), Math.max(height, along)]
 
   return (
     <group
@@ -321,9 +326,11 @@ function ChildNode({ item, order }: { item: DiagramItem; order: number }) {
         )
       })}
       {/* 当たり判定。字の隙間で hover が切れないように矩形で覆う。
-          visible={false} だとレイキャストされないため、透明にして残す */}
+          visible={false} だとレイキャストされないため、透明にして残す。
+          字数が効くのは**字の並ぶ軸だけ**（枠の中は横組み・図の中は縦組み）。
+          両軸に効かせると縦連結で上下の隣まで覆い、手前の枠が hover を奪う */}
       <mesh position={[0, 0, 0.1]}>
-        <planeGeometry args={[Math.max(width, size * 1.6), Math.max(height, size * chars.length * 1.3)]} />
+        <planeGeometry args={hitSize} />
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
     </group>
