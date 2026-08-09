@@ -1,0 +1,12 @@
+id: sho-utpada
+kind: term
+label: 生
+reading: しょう
+sanskrit:
+  text: utpāda
+  kana: ウトパーダ
+summary: 条件が揃ってはたらきが現れること。無から有への発生ではない。
+parent: fusho-fumetsu
+layout: none
+range: [71, 72]
+ai_generated: true

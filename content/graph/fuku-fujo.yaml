@@ -1,0 +1,9 @@
+id: fuku-fujo
+kind: phrase
+label: 不垢不浄
+reading: ふく ふじょう
+summary: （あらゆる事象は空相がゆえに）汚くなったり綺麗になったりしない。
+parent: shariji-to-fuzofugen
+children: [ku-mala, jo-vishuddhi]
+layout: none
+range: [74, 78]

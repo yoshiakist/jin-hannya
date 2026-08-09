@@ -1,0 +1,14 @@
+id: shariji-to-fuzofugen
+kind: phrase
+label: 舎利子是諸法空相 / 不生不滅不垢不浄 / 不増不減
+reading: しゃりし ぜしょほうくうそう / ふしょうふめつ ふくふじょう ふぞうふげん
+summary: 舎利子よ、あらゆる物事や現象は空の性質を持っており、増えたり減ったり、汚れたり綺麗になったり、増えたり減ったりしない。
+parent: shingyo
+children:
+  - ze-shoho-kuso
+  - fusho-fumetsu
+  - fuku-fujo
+  - fuzo-fugen
+related: [shariji]
+layout: none
+range: [62, 82]

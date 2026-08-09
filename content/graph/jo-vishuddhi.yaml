@@ -1,0 +1,12 @@
+id: jo-vishuddhi
+kind: term
+label: 浄
+reading: じょう
+sanskrit:
+  text: viśuddhi
+  kana: ヴィシュッディ
+summary: 汚れの除かれた清らかさ。修行が向かう先を指す語。
+parent: fuku-fujo
+layout: none
+range: [77, 78]
+ai_generated: true

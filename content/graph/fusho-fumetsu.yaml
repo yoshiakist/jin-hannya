@@ -1,0 +1,9 @@
+id: fusho-fumetsu
+kind: phrase
+label: 不生不滅
+reading: ふしょう ふめつ
+summary: （あらゆる事象は空相がゆえに）新しく生まれたり消えて無くなったりしない。
+parent: shariji-to-fuzofugen
+children: [sho-utpada, metsu-nirodha]
+layout: none
+range: [70, 74]

@@ -1,0 +1,12 @@
+id: metsu-nirodha
+kind: term
+label: 滅
+reading: めつ
+sanskrit:
+  text: nirodha
+  kana: ニローダ
+summary: 条件がほどけてはたらきが止むこと。有から無への消失ではない。
+parent: fusho-fumetsu
+layout: none
+range: [73, 74]
+ai_generated: true

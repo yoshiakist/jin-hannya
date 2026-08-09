@@ -1,0 +1,8 @@
+id: fuzo-fugen
+kind: phrase
+label: 不増不減
+reading: ふぞう ふげん
+summary: （あらゆる事象は、空相がゆえに）増えたり減ったりしない。
+parent: shariji-to-fuzofugen
+layout: none
+range: [78, 82]

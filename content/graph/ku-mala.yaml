@@ -1,0 +1,12 @@
+id: ku-mala
+kind: term
+label: 垢
+reading: く
+sanskrit:
+  text: mala
+  kana: マラ
+summary: 心を覆う汚れ。煩悩を、後から付いたよごれになぞらえた語。
+parent: fuku-fujo
+layout: none
+range: [75, 76]
+ai_generated: true
