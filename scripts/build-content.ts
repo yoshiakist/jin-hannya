@@ -63,12 +63,15 @@ syncDir(join(ROOT, 'assets/sfx'), join(ROOT, 'public/audio/sfx'), /\.(mp3|m4a|og
 const voiceFiles = syncDir(join(ROOT, 'assets/voice'), join(ROOT, 'public/audio/voice'), /\.(mp3|m4a|ogg|wav)$/)
 
 mkdirSync(OUT_TS, { recursive: true })
-writeFileSync(
-  join(OUT_TS, 'content.json'),
-  JSON.stringify({ sutra, graph, docs, svgChars, voiceFiles }),
-)
+const outPath = join(OUT_TS, 'content.json')
+const json = JSON.stringify({ sutra, graph, docs, svgChars, voiceFiles })
+// 中身が同じなら書かない。触るだけで dev サーバが作り直しに入るので、
+// 監視（scripts/watch-content.ts）から何度呼ばれても無駄が出ないようにする。
+const changed = !existsSync(outPath) || readFileSync(outPath, 'utf8') !== json
+if (changed) writeFileSync(outPath, json)
 
 console.log(
   `[build-content] graph ${Object.keys(graph).length} / docs ${Object.keys(docs).length} / ` +
-    `svg ${svgChars.length} 字 / voice ${voiceFiles.length} 本 → src/generated/content.json`,
+    `svg ${svgChars.length} 字 / voice ${voiceFiles.length} 本 → ` +
+    (changed ? 'src/generated/content.json' : 'src/generated/content.json (変更なし)'),
 )

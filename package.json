@@ -4,13 +4,14 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "npm run content:build && next dev",
-    "host": "npm run content:build && next dev -H 0.0.0.0",
+    "dev": "npm run content:build && tsx scripts/dev.ts",
+    "host": "npm run content:build && tsx scripts/dev.ts -H 0.0.0.0",
     "build": "npm run content:validate && npm run content:build && tsc --noEmit && next build",
     "preview": "npx --yes serve out",
     "typecheck": "tsc --noEmit",
     "content:validate": "tsx scripts/validate-graph.ts",
-    "content:build": "tsx scripts/build-content.ts && tsx scripts/build-glyphs.ts"
+    "content:build": "tsx scripts/build-content.ts && tsx scripts/build-glyphs.ts",
+    "content:watch": "tsx scripts/watch-content.ts"
   },
   "dependencies": {
     "@react-three/fiber": "^9.7.0",

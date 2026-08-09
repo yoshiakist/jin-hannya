@@ -26,13 +26,14 @@ npm install
 npm run dev
 ```
 
-`npm run dev` は筆文字グリフの前計算を挟んでから開発サーバを立てる。
+`npm run dev` は筆文字グリフの前計算を挟んでから開発サーバを立て、以後は `content/` を監視する
+（`*.yaml` `*.md` `sutra.txt` を保存すると `src/generated/content.json` を作り直し、そのまま HMR に乗る）。
 `src/generated/` と `public/glyphs/` はその生成物で、リポジトリには含めていない（clone 直後は
 `npm run dev` か `npm run content:build` を先に走らせる）。
 
 | コマンド | 内容 |
 |---|---|
-| `npm run dev` | グリフ前計算 → 開発サーバ |
+| `npm run dev` | グリフ前計算 → 開発サーバ（`content/` を監視） |
 | `npm run host` | 同上を LAN に公開（実機確認用） |
 | `npm run build` | グラフ検証 → グリフ前計算 → `tsc --noEmit` → 本番ビルド |
 | `npm run content:validate` | `content/` の静的検証のみ |

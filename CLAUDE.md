@@ -24,7 +24,7 @@
 
 | コマンド | 内容 |
 |---|---|
-| `npm run dev` | コンテンツ JSON + グリフ前計算 → 開発サーバ |
+| `npm run dev` | コンテンツ JSON + グリフ前計算 → 開発サーバ（`content/` を監視し、YAML・MD の保存で JSON を作り直す） |
 | `npm run host` | 同上を LAN に公開（実機確認用。WSL は `networkingMode=mirrored`） |
 | `npm run build` | グラフ検証 → 前計算 → `tsc --noEmit` → `next build`（`out/` に静的出力） |
 | `npm run preview` | `out/` を静的サーバで配信（本番挙動の確認） |
@@ -32,6 +32,7 @@
 | `npm run content:build` | 前計算のみ（`src/generated/` と `public/glyphs/` `public/glyph-svg/` `public/audio/` を出す） |
 | `npm run typecheck` | `tsc --noEmit` |
 
+- `content/*.yaml` `*.md` `sutra.txt` の保存は `src/generated/content.json` の作り直し（`scripts/watch-content.ts`）を経て HMR に乗る。**`assets/` の SVG・音源はグリフ前計算が要るので監視の外**（`npm run content:build` を打ち直すか dev を立て直す）。
 - テストランナーは無い。検証は `content:validate` と型検査、あとは画面で確認する。
 - `src/generated/` と `public/glyphs/` `public/glyph-svg/` `public/audio/` は**生成物でコミットしない**（`.gitignore` 済み）。clone 直後や生成物が無い状態では `npm run content:build` を先に走らせる。
 
