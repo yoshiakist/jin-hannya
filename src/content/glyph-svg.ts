@@ -10,15 +10,10 @@
  * 墨・琥珀の切り替えが他の DOM 文字と同じトークンから引ける。
  */
 
-const urls = import.meta.glob('../../assets/svg/*.svg', {
-  eager: true,
-  query: '?url',
-  import: 'default',
-}) as Record<string, string>
+import { contentSource } from './source.ts'
 
-const byChar = new Map<string, string>(
-  Object.entries(urls).map(([path, url]) => [path.slice(path.lastIndexOf('/') + 1, -4), url]),
-)
+/** scripts/build-content.ts が assets/svg/ からコピーした在庫。URL は字がそのままファイル名 */
+const stock = new Set(contentSource.svgChars)
 
 /**
  * 1 字ぶんの SVG の URL。在庫が無ければ `undefined`。
@@ -27,5 +22,5 @@ const byChar = new Map<string, string>(
  * 通常は必ず引ける。引けなかったときは呼び出し側で素の文字へ落とす。
  */
 export function glyphUrl(char: string): string | undefined {
-  return byChar.get(char)
+  return stock.has(char) ? `/glyph-svg/${encodeURIComponent(char)}.svg` : undefined
 }

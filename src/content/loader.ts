@@ -1,22 +1,17 @@
 /**
  * `content/graph/*.yaml` と `content/docs/*.md` を読み込み、zod で検証してグラフを組む。
  *
- * YAML は vite.config.ts の yamlPlugin がビルド時に JSON へ変換済み。
+ * YAML / Markdown は scripts/build-content.ts がビルド時に 1 本の JSON へ束ねてある。
  * ここでの zod 検証は「型を信じるための最後の関門」であり、
  * 参照整合性など横断的な検査は scripts/validate-graph.ts が CI で行う。
  */
 
 import { GraphNode, DocFrontmatter, labelText } from './schema.ts'
+import { contentSource } from './source.ts'
 import { SUTRA_CHARS, SUTRA_LENGTH, sliceOfRange } from './sutra.ts'
 
-const yamlModules = import.meta.glob<{ default: unknown }>('#content/graph/*.yaml', {
-  eager: true,
-})
-const docModules = import.meta.glob<string>('#content/docs/*.md', {
-  eager: true,
-  query: '?raw',
-  import: 'default',
-})
+const yamlModules = contentSource.graph
+const docModules = contentSource.docs
 
 export interface Doc {
   id: string
@@ -43,8 +38,8 @@ function splitFrontmatter(source: string): { frontmatter: Record<string, string>
 
 function loadNodes(): Map<string, GraphNode> {
   const nodes = new Map<string, GraphNode>()
-  for (const [path, module] of Object.entries(yamlModules)) {
-    const parsed = GraphNode.safeParse(module.default)
+  for (const [path, source] of Object.entries(yamlModules)) {
+    const parsed = GraphNode.safeParse(source)
     if (!parsed.success) {
       throw new Error(`${path}: グラフノードのスキーマ違反\n${z_issues(parsed.error)}`)
     }
@@ -221,7 +216,7 @@ export function ancestryOf(node: GraphNode): GraphNode[] {
  * ランタイム側の軽い整合性チェック。
  * 網羅的な検査は scripts/validate-graph.ts が持つ。ここは開発中の早期発見用。
  */
-if (import.meta.env.DEV) {
+if (process.env.NODE_ENV === 'development') {
   for (const node of nodes.values()) {
     // 根の range は全文を指し、label は大書用の題名なので突き合わせない
     if (node.kind !== 'sutra' && node.range && sliceOfRange(node.range) !== labelText(node.label)) {

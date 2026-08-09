@@ -24,35 +24,39 @@
 
 | コマンド | 内容 |
 |---|---|
-| `npm run dev` | グリフ前計算 → 開発サーバ |
+| `npm run dev` | コンテンツ JSON + グリフ前計算 → 開発サーバ |
 | `npm run host` | 同上を LAN に公開（実機確認用。WSL は `networkingMode=mirrored`） |
-| `npm run build` | グラフ検証 → グリフ前計算 → `tsc --noEmit` → 本番ビルド |
+| `npm run build` | グラフ検証 → 前計算 → `tsc --noEmit` → `next build`（`out/` に静的出力） |
+| `npm run preview` | `out/` を静的サーバで配信（本番挙動の確認） |
 | `npm run content:validate` | `content/` の静的検証のみ |
-| `npm run content:build` | グリフ前計算のみ（`src/generated/` と `public/glyphs/` を出す） |
+| `npm run content:build` | 前計算のみ（`src/generated/` と `public/glyphs/` `public/glyph-svg/` `public/audio/` を出す） |
 | `npm run typecheck` | `tsc --noEmit` |
 
 - テストランナーは無い。検証は `content:validate` と型検査、あとは画面で確認する。
-- `src/generated/` と `public/glyphs/` は**生成物でコミットしない**（`.gitignore` 済み）。clone 直後や生成物が無い状態では `npm run content:build` を先に走らせる。
+- `src/generated/` と `public/glyphs/` `public/glyph-svg/` `public/audio/` は**生成物でコミットしない**（`.gitignore` 済み）。clone 直後や生成物が無い状態では `npm run content:build` を先に走らせる。
 
 ## スタック
 
-Vite 8 + TypeScript + React 19 / @react-three/fiber v9 / three 0.185（`WebGPURenderer` + TSL）/ Jotai / motion / zod。
-SSR 無し・静的ホスティング前提。`drei` は使わない（WebGL 前提のコンポーネントが混ざるため）。
+Next.js 16（App Router、`output: 'export'`）+ TypeScript + React 19 / @react-three/fiber v9 / three 0.185（`WebGPURenderer` + TSL）/ Jotai / motion / zod。
+SSR 無し・全ルート SSG・静的ホスティング前提。`drei` は使わない（WebGL 前提のコンポーネントが混ざるため）。
 
 ## 構成の要点
 
 ```
+app/        layout.tsx(アプリ本体を全ルートで永続) AppShell.tsx(ssr:false の境界)
+            page.tsx / [...path]/page.tsx(metadata・generateStaticParams だけを担う空ページ)
 src/
   scene/    Stage.tsx(Canvas+ティア訂正) Paper.tsx(L0格子) NodeStage.tsx(L1以降/3レイアウト)
             Transition.tsx(遷移演出) Particles.tsx glyphs.ts tier.ts materials.ts
   overlay/  Overlay.tsx PaperFallback.tsx SpeakButton.tsx AudioControls.tsx LeftArrow.tsx
-  nav/      fsm.ts atoms.ts router.ts
-  content/  schema.ts loader.ts sutra.ts
+  nav/      fsm.ts atoms.ts router.ts(useRouteSync) url.ts(id⇄パスの写像・初期ノード)
+  content/  schema.ts loader.ts sutra.ts source.ts(生成 JSON への唯一の入口)
   world/    paper.ts(格子寸法・index→(column,row)) pan.ts(可動域・ドラッグ・拡大)
             node-layout.ts(L1 以降の大書・図の寸法／DOM 用の目印 overlayInsets)
   audio/    index.ts
-scripts/    build-glyphs.ts svg-path.ts sdf.ts(グロー用距離場) validate-graph.ts
-content/    sutra.txt / graph/*.yaml(21) / docs/*.md(21)
+scripts/    build-content.ts(YAML/MD→content.json・assets を public/ へ)
+            build-glyphs.ts svg-path.ts sdf.ts(グロー用距離場) validate-graph.ts
+content/    sutra.txt / graph/*.yaml / docs/*.md
 assets/     svg/(筆文字127) pattern/circle.svg bgm/ sfx/ voice/(未収録)
 ```
 
@@ -69,7 +73,8 @@ assets/     svg/(筆文字127) pattern/circle.svg bgm/ sfx/ voice/(未収録)
 - 用語を混ぜない: **深度** `L0/L1/L2…`（ユーザーの階層）と **性能ティア** `Tier 1(WebGPU)/2(WebGL2)/3(WebGL不可)`（描画能力）。「Tier」は性能の話にのみ使う。
 - 遷移は相を持つ FSM（`idle → hovered → zooming-in → focused → zooming-out`）。`zooming-*` の間は入力を殺す。
 - 演出は**潜ると戻るで非対称**。潜る = 非フォーカス字が散開・生存字はメッシュのまま連続移動／戻る = 現在字が再配置されつつ粒子がフェードインして凝集。逆再生にはしない。
-- **面の用意をやり直さない。** 紙面は畳まず（潜っている間は描かず・計算せず・当たり判定にも出さないだけ）、マテリアルは紙面で 1 本。マウントし直すと 90 字ぶんの用意を 1 フレームで払って固まる。遷移中に固まったり固まらなかったりしたら、まずマテリアルを作り直している所を疑う（TSL の吐くソースが毎回変わり、プログラムキャッシュに当たらない）。
+- **面の用意をやり直さない。** 紙面は畳まず（潜っている間は描かず・計算せず・当たり判定にも出さないだけ）、マテリアルは紙面で 1 本。マウントし直すと 90 字ぶんの用意を 1 フレームで払って固まる。遷移中に固まったり固まらなかったりしたら、まずマテリアルを作り直している所を疑う（TSL の吐くソースが毎回変わり、プログラムキャッシュに当たらない）。同じ理由で**アプリ本体は `app/layout.tsx` に置く**。page 側に置くとルート遷移のたびに再マウントされる。
+- **URL は実パス、history は Next に任せる。** 自前の pushState はしない。潜る・戻るとも idle で `router.push`、ブラウザバックは pathname の変化として演出付きで取り込む。初期ノードは atom 初期値が URL から引く（→ skill: `navigation-fsm`）。
 - 遷移中の濃さは**深度ごとに 1 本ずつ**（`paperOpacity` / `nodeOpacity`）。戻りぎわは大書と紙面が同時に画面へ居る。
 - `layout`（`none` / `circle` / `column`）は**ノード側の YAML が持つ**。描画側で決めない。
 - **エッジは関係の種類で選ぶ。深さの都合で選ばない。** 包含は `parent`/`children`（図に出る・1 段深くなる）、隣接は `anchor`/`related`（関連語句として本文の左に散る・深度は増えない）。`related` は向きを持たないので片側にだけ書き、逆向きはローダの隣接表が張る。関連語句の散らし位置は `id` から引く（実行のたびに振り直すと、戻ったとき同じ語を掴み直せない）。
@@ -87,10 +92,12 @@ assets/     svg/(筆文字127) pattern/circle.svg bgm/ sfx/ voice/(未収録)
 - 当たり判定用オブジェクトを `visible={false}` にしない（レイキャスト対象から外れる）。透明マテリアルで置く。
 - ドラッグの `setPointerCapture` は `pointerdown` 即時ではなく **6px 動いてから**（即時だとクリックが成立しない）。
 - 紙面の可動域は**ビューポート依存**。縦長スマホでは必ず左へはみ出し、16:9 PC では収まる。定数化せずリサイズごとに実測する。
+- `router.push` は**非同期**で、`usePathname` への反映まで数フレームの窓がある。push したパスを控えずに pathname とだけ突き合わせると、窓の間の再実行で外部遷移と誤認して逆再生が起きる（`useRouteSync` の `pushing` ref。→ skill: `navigation-fsm`）。
 
 ## いまの状態（詳細は `docs/status.md`）
 
-- `npm run build` は通る。確認環境は headless Chromium（Tier 2 / WebGL2）1440x810。
+- `npm run build` は通り、`out/` に全ルートの静的 HTML（title / description / OGP 付き）が出る。確認環境は headless Chromium（Tier 2 / WebGL2）1440x810。
+- **Next.js 化済み（2026-08-09）。** 実パスルーティング・深いパスの直接ロード・ブラウザバック／フォワードの演出付き同期を headless と実機ブラウザで確認。OGP 画像（`opengraph-image`）は未着手。
 - **遷移演出は繋がった。** 持ち越し字の連続移動も粒子も出る（点サイズは `Sprite` のインスタンシングで解決）。残るのは値の詰めと Tier 1 実機での見え方。
 - L1 以降の左右パンは 900x700 の画面で確認済み（GPU レイヤーと DOM が同じばねで動く）。
 - 未確認: BGM / SFX / ダッキング、Tier 3 の `PaperFallback`、**L0 の**パン同期（16:9 では紙面が収まりパンが起きない）、ホイール／ピンチ拡大、`column` の hover グロー、読み上げ（音源未収録）。

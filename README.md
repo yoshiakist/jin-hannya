@@ -17,7 +17,7 @@
 
 ## 動かす
 
-必要なもの: Node.js 22 以上（Vite 8 の要件）と、WebGPU または WebGL2 が使えるブラウザ。
+必要なもの: Node.js 22 以上と、WebGPU または WebGL2 が使えるブラウザ。
 
 ```sh
 git clone https://github.com/yoshiakist/jin-hannya.git
@@ -56,8 +56,8 @@ npm run dev
 **2 レイヤー合成 — 組版は DOM、絵は GPU。** 縦組みの長文は `writing-mode: vertical-rl` の DOM オーバーレイ、
 筆文字グリフ・粒子・ゆらぎ・発光・描線は WebGPU レイヤー。両者はパンを 1 つの atom から読んで同期します。
 
-Vite 8 + TypeScript + React 19 / @react-three/fiber v9 / three 0.185（`WebGPURenderer` + TSL）/ Jotai / motion / zod。
-SSR 無し・静的ホスティング前提。
+Next.js 16（App Router、`output: 'export'`）+ TypeScript + React 19 / @react-three/fiber v9 / three 0.185（`WebGPURenderer` + TSL）/ Jotai / motion / zod。
+SSR 無し・全ルート SSG・静的ホスティング前提。ノードごとの実パス URL に title / description / OGP が付く。
 
 ```
 src/
@@ -113,7 +113,7 @@ sample_image/  PC モック 3 枚（参照用）
 このリポジトリはコードとコンテンツで異なるライセンスを持ちます。
 
 **Code is licensed under the [MIT License](LICENSE).**
-`src/`、`scripts/`、およびルートの設定ファイル（`package.json` / `vite.config.ts` / `tsconfig.json` / `index.html`）が対象。
+`src/`、`app/`、`scripts/`、およびルートの設定ファイル（`package.json` / `next.config.ts` / `tsconfig.json`）が対象。
 
 **All textual content and modern translations contained in this repository are licensed under
 [CC BY-NC-ND 4.0](LICENSE-CONTENT.md).**

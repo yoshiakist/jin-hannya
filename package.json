@@ -4,18 +4,19 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "npm run content:build && vite",
-    "host": "npm run content:build && vite --host",
-    "build": "npm run content:validate && npm run content:build && tsc --noEmit && vite build",
-    "preview": "vite preview",
+    "dev": "npm run content:build && next dev",
+    "host": "npm run content:build && next dev -H 0.0.0.0",
+    "build": "npm run content:validate && npm run content:build && tsc --noEmit && next build",
+    "preview": "npx --yes serve out",
     "typecheck": "tsc --noEmit",
     "content:validate": "tsx scripts/validate-graph.ts",
-    "content:build": "tsx scripts/build-glyphs.ts"
+    "content:build": "tsx scripts/build-content.ts && tsx scripts/build-glyphs.ts"
   },
   "dependencies": {
     "@react-three/fiber": "^9.7.0",
     "jotai": "^2.20.2",
     "motion": "^13.0.0",
+    "next": "^16.3.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "three": "^0.185.1",
@@ -26,10 +27,8 @@
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@types/three": "^0.185.0",
-    "@vitejs/plugin-react": "^5.0.0",
     "tsx": "^4.20.0",
     "typescript": "^5.9.0",
-    "vite": "^8.2.1",
     "yaml": "^2.9.0"
   }
 }

@@ -1,7 +1,11 @@
 node_modules/
-dist/
-.vite/
+.next/
+out/
+next-env.d.ts
+tsconfig.tsbuildinfo
 
-# scripts/build-glyphs.ts の生成物（ビルド時に再生成される）
+# scripts/build-content.ts / build-glyphs.ts の生成物（ビルド時に再生成される）
 src/generated/
 public/glyphs/
+public/glyph-svg/
+public/audio/

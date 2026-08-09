@@ -25,16 +25,14 @@ const DUCK_GAIN = 0.45
  */
 const BGM_CEILING = 1 / 4
 
-// Vite に解決させる。new URL(..., import.meta.url) では dev と build で解決先がずれる
-import BGM_URL from '#assets/bgm/sample_music_01.mp3?url'
-import WOOSH_URL from '#assets/sfx/woosh.wav?url'
+// scripts/build-content.ts が assets/ から public/audio/ へコピーしたものを fetch する
+import { contentSource } from '../content/source.ts'
 
-/** 読み上げ音源。ファイル名は YAML の audio フィールドが指す（未収録なら空） */
-const VOICE_URLS = import.meta.glob<string>('#assets/voice/*', {
-  eager: true,
-  query: '?url',
-  import: 'default',
-})
+const BGM_URL = '/audio/bgm/sample_music_01.mp3'
+const WOOSH_URL = '/audio/sfx/woosh.wav'
+
+/** 読み上げ音源の在庫。ファイル名は YAML の audio フィールドが指す（未収録なら空） */
+const VOICE_FILES = new Set(contentSource.voiceFiles)
 
 let context: AudioContext | null = null
 let master: GainNode | null = null
@@ -242,8 +240,8 @@ export async function playVoice(file: string, onEnded: () => void): Promise<void
   const ctx = ensureContext()
   stopVoice()
 
-  const url = Object.entries(VOICE_URLS).find(([path]) => path.endsWith(`/${file}`))?.[1]
-  if (!url) throw new Error(`読み上げ音源が無い: assets/voice/${file}`)
+  if (!VOICE_FILES.has(file)) throw new Error(`読み上げ音源が無い: assets/voice/${file}`)
+  const url = `/audio/voice/${encodeURIComponent(file)}`
   const buffer = await fetch(url)
     .then((r) => r.arrayBuffer())
     .then((data) => ctx.decodeAudioData(data))

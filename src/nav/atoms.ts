@@ -15,12 +15,16 @@ import {
   docById,
   SUTRA_INDEX_TO_NODE,
 } from '../content/loader.ts'
+import { initialNodeId } from './url.ts'
 import { loadVisited, saveVisited, completedIds } from './progress.ts'
 import { detectTier, type Tier } from '../scene/tier.ts'
 import type { GraphNode } from '../content/schema.ts'
 
-/** ナビゲーション状態。書き込みは NavEvent を dispatch する形に限定する */
-export const navAtom = atomWithReducer<NavState, NavEvent>(initialState(root.id), reduce)
+/**
+ * ナビゲーション状態。書き込みは NavEvent を dispatch する形に限定する。
+ * 初期ノードは URL から引く（深いパスの直接ロードで、マウント後の sync を待たない）
+ */
+export const navAtom = atomWithReducer<NavState, NavEvent>(initialState(initialNodeId()), reduce)
 
 export const phaseAtom = atom((get) => get(navAtom).phase)
 export const acceptsInputAtom = atom((get) => acceptsInput(get(navAtom).phase))

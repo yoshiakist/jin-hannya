@@ -51,12 +51,12 @@ Tier 3 は 2 レイヤー構成の帰結として「WebGPU レイヤーを外す
 
 | 領域 | 採用 | 備考 |
 |---|---|---|
-| ビルド | Vite 8 + TypeScript + React 19 | SSR 不要。静的ホスティング前提 |
+| ビルド | Next.js 16（App Router、`output: 'export'`）+ TypeScript + React 19 | SSR 無し・全ルート SSG。静的ホスティング前提。三次元シーンは `ssr: false` の dynamic import でクライアント専用 |
 | 3D | three 0.185 `WebGPURenderer` + TSL / r3f v9 | `gl: async (props) => { const r = new WebGPURenderer(props); await r.init(); return r }` |
 | 状態 | Jotai | 現在ノード、遷移フェーズ、パン量、設定（音量等） |
 | 遷移制御 | 小さな手書き FSM | 相を明示的に持つ（→ `navigation-fsm`） |
 | アニメーション | TSL（粒子）+ spring 補間（カメラ・DOM） | DOM 側は motion |
-| コンテンツ | YAML（グラフ）+ Markdown（解説） | **ビルド時に JSON へ変換する自作 Vite プラグイン。ランタイムに YAML パーサを載せない。** zod で検証 |
+| コンテンツ | YAML（グラフ）+ Markdown（解説） | **`scripts/build-content.ts` がビルド時に 1 本の JSON（`src/generated/content.json`）へ束ねる。ランタイムに YAML パーサを載せない。** zod で検証 |
 | 音声 | Web Audio API 直 | → `audio-design` |
 
 ## ターゲット環境

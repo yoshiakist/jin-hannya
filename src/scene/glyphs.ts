@@ -52,9 +52,9 @@ let loading: Promise<void> | null = null
 export function loadGlyphs(): Promise<void> {
   if (!loading) {
     loading = Promise.all([
-      fetch(`${import.meta.env.BASE_URL}glyphs/mesh.bin`).then((r) => r.arrayBuffer()),
-      fetch(`${import.meta.env.BASE_URL}glyphs/particles.bin`).then((r) => r.arrayBuffer()),
-      fetch(`${import.meta.env.BASE_URL}glyphs/sdf.bin`).then((r) => r.arrayBuffer()),
+      fetch('/glyphs/mesh.bin').then((r) => r.arrayBuffer()),
+      fetch('/glyphs/particles.bin').then((r) => r.arrayBuffer()),
+      fetch('/glyphs/sdf.bin').then((r) => r.arrayBuffer()),
     ]).then(([mesh, particles, sdf]) => {
       meshBuffer = mesh
       particleBuffer = particles

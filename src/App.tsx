@@ -3,7 +3,7 @@ import { useAtomValue, useSetAtom } from 'jotai'
 import { Stage } from './scene/Stage.tsx'
 import { Overlay } from './overlay/Overlay.tsx'
 import { PaperFallback } from './overlay/PaperFallback.tsx'
-import { useHashRouting } from './nav/router.ts'
+import { useRouteSync } from './nav/router.ts'
 import {
   tierAtom,
   phaseAtom,
@@ -26,7 +26,7 @@ export function App() {
   const bounds = useAtomValue(panBoundsAtom)
   const containerRef = useRef<HTMLDivElement>(null)
 
-  useHashRouting()
+  useRouteSync()
   useAutoStartAudio(containerRef)
   useWooshOnTransition(phase)
   useVisitLog()

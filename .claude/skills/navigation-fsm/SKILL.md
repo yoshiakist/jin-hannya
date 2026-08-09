@@ -1,6 +1,6 @@
 ---
 name: navigation-fsm
-description: 深般若のナビゲーション（遷移フェーズを持つ FSM、ハッシュルーティングとブラウザバック＝ズームアウト、現在位置インジケータ、左矢印、読み上げボタン）。nav/fsm.ts / router.ts / atoms.ts、overlay/ の UI 部品を触るときに参照する。
+description: 深般若のナビゲーション（遷移フェーズを持つ FSM、Next App Router による実パスルーティング、現在位置インジケータ、左矢印、読み上げボタン）。nav/fsm.ts / router.ts / url.ts / atoms.ts、overlay/ の UI 部品を触るときに参照する。
 ---
 
 # ナビゲーション
@@ -21,8 +21,13 @@ idle ──hover──▶ hovered ──click──▶ zooming-in ──▶ focu
 
 ## URL 同期
 
-- `/#/goun/shiki` のようにノードパスを URL に載せる。ハッシュルーティング（`nav/router.ts`）。
-- **ブラウザバック = ズームアウト** に割り当てる。共有リンクとしても機能する。
+- `/goun/shiki/` のようにノードパスを**実パス**で URL に載せる。全パスは SSG（`app/[...path]/page.tsx` の `generateStaticParams`）で吐き、共有リンク・SEO・OGP が効く。範囲外のパスは 404。
+- history は Next（`next/navigation`）に任せる。**自前の pushState / state.depth 管理はしない。** 潜る・戻るのどちらも「演出が idle に落ちたら `router.push`」で 1 段ずつ積む標準挙動（`nav/router.ts` の `useRouteSync`）。
+- ブラウザバック／フォワードは pathname の変化として受け、深度を比べてズームイン／アウトの**演出付き**で状態へ反映する。遷移演出の最中に来た分は idle に落ちたとき拾い直す。
+- **初期ノードは atom の初期値が URL から引く**（`nav/url.ts` の `initialNodeId`）。マウント後の effect で sync すると、「状態 → URL」の効果が同期前の根を見て `router.push('/')` する競合が起きる（実際に踏んだ）。
+- **`router.push` は非同期で、pathname への反映まで数フレームの窓がある。** push したパスは `pushing` ref に控え、pathname の変化が自分の push の反映なら取り込むだけにする。この控えが無いと、窓の間に hover 等で効果が再実行されたとき古い pathname を外部遷移と誤認し、出発点へ逆再生で押し戻される（実際に踏んだ。発症は確率的）。
+- id ⇄ パスの写像は `nav/url.ts`。`router.ts`（同期）と `atoms.ts`（初期値）の両方が使うので独立している。
+- アプリ本体は `app/layout.tsx` に置いて全ルートで永続させる。page 側に置くと遷移のたびに再マウントされる（「面の用意をやり直さない」が崩れる）。各 page は metadata だけを担う。
 
 ## 現在位置インジケータ
 

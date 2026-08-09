@@ -12,7 +12,9 @@
  * 行が短ければその列は途中で終わり、次の字は必ず次の列の先頭（上端）から始まる。
  */
 
-import rawSutra from '#content/sutra.txt?raw'
+import { contentSource } from './source.ts'
+
+const rawSutra = contentSource.sutra
 
 /** 1 列に収める文字数の上限。README「ルート画面（全文格子）」より */
 export const COLS_PER_LINE = 16
