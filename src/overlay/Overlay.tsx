@@ -507,7 +507,7 @@ function Breadcrumb() {
                     disabled={current || !accepts}
                     onClick={() => !isGestureClick() && dispatch({ type: 'back', id: node.id })}
                   >
-                    {text.length > 6 ? `${text.slice(0, 5)}…` : text}
+                    {text.length > 7 ? `${text.slice(0, 3)}～${text.slice(-3)}` : text}
                   </button>
                 </li>
               )
