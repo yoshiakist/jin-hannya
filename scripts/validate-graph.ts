@@ -36,17 +36,19 @@ const glyphs = new Set(
     .filter((key) => !key.endsWith('_path')),
 )
 
-// 改行は L0 の列の切れ目として意味を持つ（1 行 = 1 列）。行の途中の空白だけは黙って落ちるので知らせる
+// 改行は L0 の列の切れ目（1 行 = 1 列）、行内の全角スペースは 1 升ぶんの空き。
+// それ以外の空白は黙って落ちるので知らせる
 {
   const lines = rawSutra.split(/\r?\n/u).filter((l) => l.trim().length > 0)
-  const spaced = lines.filter((l) => /\s/u.test(l.trim())).length
+  const spaced = lines.filter((l) => /[^\S　]/u.test(l.trim())).length
   if (spaced > 0) {
     warn(
-      `content/sutra.txt の ${spaced} 行に行内の空白がある。` +
+      `content/sutra.txt の ${spaced} 行に全角スペース以外の空白がある。` +
         'ローダは除去するため range はずれないが、その空白ぶんの升は空かずに詰まる',
     )
   }
-  const over = lines.filter((l) => Array.from(l.replace(/\s+/gu, '')).length > 16).length
+  // 全角スペースも 1 升を占めるので、折り返しの判定では字と同じに数える
+  const over = lines.filter((l) => Array.from(l.replace(/[^\S　]+/gu, '')).length > 16).length
   if (over > 0) {
     warn(`content/sutra.txt に 16 字を超える行が ${over} 行ある。超えたぶんは次の列へ折り返して描かれる`)
   }

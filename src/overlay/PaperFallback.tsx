@@ -30,11 +30,17 @@ export function PaperFallback() {
     return table
   }, [])
 
-  /** 列の切れ目は sutra.txt の改行位置。Paper.tsx と同じ格子を DOM でも組む */
+  /**
+   * 列の切れ目は sutra.txt の改行位置。Paper.tsx と同じ格子を DOM でも組む。
+   * 全角スペースの升は字が無いので、row の抜けを空の升で埋める。
+   */
   const columns = useMemo(() => {
-    const out: { index: number; char: string }[][] = []
+    const out: ({ index: number; char: string } | null)[][] = []
     SUTRA_CHARS.forEach((char, index) => {
-      ;(out[cellOf(index).column] ??= []).push({ index, char })
+      const { column, row } = cellOf(index)
+      const cells = (out[column] ??= [])
+      while (cells.length < row) cells.push(null)
+      cells.push({ index, char })
     })
     return out
   }, [])
@@ -43,7 +49,9 @@ export function PaperFallback() {
     <div className="paper-fallback">
       {columns.map((column, c) => (
         <div className="paper-fallback__column" key={c}>
-          {column.map(({ index, char }) => {
+          {column.map((cell, r) => {
+            if (!cell) return <span className="paper-fallback__char" key={`gap-${r}`} />
+            const { index, char } = cell
             const id = indexToNode[index]
             const focused = id !== null && id === hoveredId
             const visited = id != null && completed.has(id)

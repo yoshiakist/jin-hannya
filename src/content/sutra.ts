@@ -10,6 +10,8 @@
  * range の基準は正規形のままだが、**格子の列の切れ目はファイルの改行位置に従う**。
  * 1 行 = 1 列で、行が `COLS_PER_LINE` を超えるぶんだけ次の列へ折り返す。
  * 行が短ければその列は途中で終わり、次の字は必ず次の列の先頭（上端）から始まる。
+ * 行内の**全角スペースは 1 升ぶんの空き**として格子に効く（羯諦の区切りなど）。
+ * 正規形には含まれないので range はずれない。
  */
 
 import { contentSource } from './source.ts'
@@ -19,11 +21,19 @@ const rawSutra = contentSource.sutra
 /** 1 列に収める文字数の上限。README「ルート画面（全文格子）」より */
 export const COLS_PER_LINE = 16
 
-/** ファイルの 1 行 = 1 つの塊。行内の空白は落とし、空行は列を作らないので捨てる */
-export const SUTRA_LINES: readonly string[] = rawSutra
+/**
+ * 格子を組むための行。全角スペース `U+3000` だけは**空き升**として残し、
+ * それ以外の空白（半角・タブ）は落とす。空行は列を作らないので捨てる。
+ */
+const LAYOUT_LINES: readonly string[] = rawSutra
   .split(/\r?\n/u)
-  .map((line) => line.replace(/\s+/gu, ''))
-  .filter((line) => line.length > 0)
+  .map((line) => line.replace(/[^\S　]+/gu, ''))
+  .filter((line) => line.replace(/　/gu, '').length > 0)
+
+/** ファイルの 1 行 = 1 つの塊。空白はすべて落としたもの（インデックスの基準） */
+export const SUTRA_LINES: readonly string[] = LAYOUT_LINES.map((line) =>
+  line.replace(/　/gu, ''),
+)
 
 /** 空白類（半角・全角・改行）をすべて落とした正規形 */
 export const SUTRA = SUTRA_LINES.join('')
@@ -50,13 +60,18 @@ function buildCells(): GridCell[] {
   const cells: GridCell[] = []
   let index = 0
   let column = 0
-  for (const line of SUTRA_LINES) {
+  for (const line of LAYOUT_LINES) {
     let row = 0
-    for (const _char of line) {
+    for (const char of line) {
       // 1 行が上限を超えたら、同じ行の続きとして次の列へ折り返す
       if (row === COLS_PER_LINE) {
         column += 1
         row = 0
+      }
+      // 全角スペースは字を持たない升。1 つぶん送るだけで index は進めない
+      if (char === '　') {
+        row += 1
+        continue
       }
       cells.push({ index, column, row })
       index += 1
