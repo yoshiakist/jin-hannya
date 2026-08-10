@@ -31,7 +31,9 @@ const sutra = Array.from(rawSutra.replace(/\s+/gu, ''))
 const glyphs = new Set(
   readdirSync(SVG_DIR)
     .filter((f) => f.endsWith('.svg'))
-    .map((f) => basename(f, '.svg')),
+    .map((f) => basename(f, '.svg'))
+    // `<字>_path.svg` は塗りではなく筆順の中心線。字の在庫としては数えない
+    .filter((key) => !key.endsWith('_path')),
 )
 
 // 改行は L0 の列の切れ目として意味を持つ（1 行 = 1 列）。行の途中の空白だけは黙って落ちるので知らせる

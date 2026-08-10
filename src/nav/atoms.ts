@@ -131,13 +131,40 @@ export const visitedIndicesAtom = atom<Float32Array>((get) => {
 // --- 実行環境 ---------------------------------------------------------------
 
 /** 性能ティア。起動時に 1 度だけ判定する */
-export const tierAtom = atom<Tier>(detectTier())
+const TIER = detectTier()
+export const tierAtom = atom<Tier>(TIER)
 
 /**
  * 実測フレームタイムから動的に下げる粒子数の係数（0〜1）。
  * 起動後数秒の計測で機種差を吸収する（README「性能ティア」）。
  */
 export const particleScaleAtom = atom(1)
+
+// --- 起動のロゴ -------------------------------------------------------------
+
+/**
+ * ロゴ（深般若）を書いている相。
+ *   writing … 暗闇に筆を運んでいる。紙面は伏せたまま
+ *   fading  … ロゴが薄れ、入れ替わりに経文が滲み出す
+ *   done    … ロゴは畳まれ、以後この面には戻らない
+ */
+export type SplashPhase = 'writing' | 'fading' | 'done'
+
+/**
+ * ロゴを出すか。**根を直接開いたときの 1 回だけ**で、
+ * L1 以降からリンクで戻ってきても（同じページのまま相が進むので）二度と 'writing' には戻らない。
+ */
+function initialSplashPhase(): SplashPhase {
+  if (typeof window === 'undefined') return 'done'
+  // 潜った先を直接開いた読者に、名乗りは要らない
+  if (initialNodeId() !== root.id) return 'done'
+  // Tier 3 は Canvas を持たない。筆を運ぶ層そのものが無い
+  if (TIER === 3) return 'done'
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return 'done'
+  return 'writing'
+}
+
+export const splashAtom = atom<SplashPhase>(initialSplashPhase())
 
 // --- 設定 -------------------------------------------------------------------
 

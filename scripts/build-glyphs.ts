@@ -9,17 +9,19 @@
  *   public/glyphs/mesh.bin      … 頂点座標(f32 xy) + インデックス(u32) を全字ぶん連結
  *   public/glyphs/particles.bin … 粒子ホームポジション(f32 xy) を全字ぶん連結
  *   public/glyphs/sdf.bin       … 符号付き距離場(u8) を 1 枚のアトラスに敷き詰めたもの
+ *   public/glyphs/order.bin     … 筆順パラメータ場(u8)。`<字>_path.svg` がある字だけ
  *   src/generated/glyphs.json   … 上記へのオフセット表
  *
  * 座標系は three に合わせて **Y 上向き**、字面が `[-0.5, 0.5]^2` に収まるよう正規化する。
  */
 
-import { readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join, basename } from 'node:path'
 import { ShapeUtils, Vector2 } from 'three'
-import { flattenPath, toRegions, parseTransform, signedArea, type Vec2 } from './svg-path.ts'
+import { flattenPath, flattenPolylines, toRegions, parseTransform, signedArea, type Vec2 } from './svg-path.ts'
 import { buildSdf, SDF_RES, SDF_EXTENT, SDF_SPREAD } from './sdf.ts'
+import { buildStrokeOrder, ORDER_RES, ORDER_EXTENT, type StrokeOrder } from './stroke-order.ts'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const SVG_DIR = join(ROOT, 'assets/svg')
@@ -34,6 +36,11 @@ const PARTICLES_FOR_CIRCLE = 20000
 
 /** SDF アトラスの列数。行数は字数から決まる */
 const SDF_COLUMNS = 16
+/** 筆順アトラスの列数。載るのは `<字>_path.svg` を用意した数字だけなので細く取る */
+const ORDER_COLUMNS = 4
+
+/** 筆順の中心線を持つ SVG の接尾辞。塗りのグリフとしては読まない */
+const PATH_SUFFIX = '_path'
 
 interface Built {
   key: string
@@ -42,6 +49,8 @@ interface Built {
   particles: Float32Array
   /** 符号付き距離場 1 字ぶん（SDF_RES × SDF_RES の u8、下から上） */
   sdf: Uint8Array
+  /** 筆順パラメータ場 1 字ぶん + 画ごとの区間（`<字>_path.svg` があるときだけ） */
+  order: StrokeOrder | null
 }
 
 function readSvg(path: string): { viewBox: [number, number, number, number]; paths: string[]; transform: string | null } {
@@ -141,15 +150,17 @@ function sampleTriangles(positions: Float32Array, indices: Uint32Array, count: n
   return out
 }
 
-function build(key: string, file: string, particleCount: number, seed: number): Built {
-  const { viewBox, paths, transform } = readSvg(file)
+/**
+ * SVG のユーザ座標 → 字面ローカル座標（[-0.5, 0.5]^2、Y 上向き）への写像。
+ * 塗りのグリフと筆順の中心線は同じ viewBox なので、同じ写像を通せば重なる。
+ */
+function localizer(viewBox: [number, number, number, number], transform: string | null) {
   const { tx, ty, sx, sy } = parseTransform(transform)
-
   const [vx, vy, vw, vh] = viewBox
   // 長辺を 1 に揃えてアスペクトを保つ。circle.svg は正確な正方形ではない
   const scale = 1 / Math.max(vw, vh)
 
-  const toLocal = (p: Vec2): Vec2 => {
+  return (p: Vec2): Vec2 => {
     const x = p.x * sx + tx
     const y = p.y * sy + ty
     return {
@@ -158,6 +169,20 @@ function build(key: string, file: string, particleCount: number, seed: number): 
       y: -(y - vy - vh / 2) * scale,
     }
   }
+}
+
+/** `<字>_path.svg` を読み、筆順どおりに並んだ画（字面ローカルの折れ線）を返す */
+function readStrokes(file: string): Vec2[][] {
+  const { viewBox, paths, transform } = readSvg(file)
+  const toLocal = localizer(viewBox, transform)
+  const strokes = paths.flatMap((d) => flattenPolylines(d)).map((points) => points.map(toLocal))
+  if (strokes.length === 0) throw new Error(`${file}: 画が 1 本も取れない`)
+  return strokes
+}
+
+function build(key: string, file: string, particleCount: number, seed: number, orderFile?: string): Built {
+  const { viewBox, paths, transform } = readSvg(file)
+  const toLocal = localizer(viewBox, transform)
 
   const contours = paths
     .flatMap((d) => flattenPath(d))
@@ -193,25 +218,39 @@ function build(key: string, file: string, particleCount: number, seed: number): 
     indices: indexArray,
     particles: sampleTriangles(positionArray, indexArray, particleCount, seed),
     sdf: buildSdf(positionArray, indexArray),
+    order: orderFile ? buildStrokeOrder(readStrokes(orderFile)) : null,
   }
 }
 
 function main(): void {
-  const glyphFiles = readdirSync(SVG_DIR)
+  const svgFiles = readdirSync(SVG_DIR)
     .filter((f) => f.endsWith('.svg'))
     .sort()
+  // 筆順の中心線は塗りではないので、グリフとしては読まない
+  const glyphFiles = svgFiles.filter((f) => !basename(f, '.svg').endsWith(PATH_SUFFIX))
 
   const built: Built[] = []
   const failures: string[] = []
 
   glyphFiles.forEach((file, i) => {
     const key = basename(file, '.svg')
+    const orderFile = join(SVG_DIR, `${key}${PATH_SUFFIX}.svg`)
     try {
-      built.push(build(key, join(SVG_DIR, file), PARTICLES_PER_GLYPH, i + 1))
+      built.push(
+        build(key, join(SVG_DIR, file), PARTICLES_PER_GLYPH, i + 1, existsSync(orderFile) ? orderFile : undefined),
+      )
     } catch (error) {
       failures.push(`${file}: ${(error as Error).message}`)
     }
   })
+
+  // 塗りの無い筆順は引きようがない。取りこぼしに気づけるよう落とす
+  for (const file of svgFiles) {
+    const key = basename(file, '.svg')
+    if (!key.endsWith(PATH_SUFFIX)) continue
+    const base = key.slice(0, -PATH_SUFFIX.length)
+    if (!glyphFiles.includes(`${base}.svg`)) failures.push(`${file}: 対になる ${base}.svg が無い`)
+  }
 
   try {
     built.push(build('@circle', join(PATTERN_DIR, 'circle.svg'), PARTICLES_FOR_CIRCLE, 9001))
@@ -250,6 +289,21 @@ function main(): void {
     }
   })
 
+  // 筆順は用意した字だけの別アトラス。全字ぶん取ると使わない面が大半になる
+  const ordered = built.filter((g) => g.order)
+  const orderCells = new Map(ordered.map((g, cell) => [g.key, cell]))
+  const orderRows = Math.ceil(ordered.length / ORDER_COLUMNS)
+  const orderWidth = ORDER_COLUMNS * ORDER_RES
+  const order = Buffer.alloc(orderWidth * orderRows * ORDER_RES)
+  ordered.forEach((g, cell) => {
+    const column = cell % ORDER_COLUMNS
+    const row = Math.floor(cell / ORDER_COLUMNS)
+    for (let y = 0; y < ORDER_RES; y++) {
+      const dest = (row * ORDER_RES + y) * orderWidth + column * ORDER_RES
+      order.set(g.order!.field.subarray(y * ORDER_RES, (y + 1) * ORDER_RES), dest)
+    }
+  })
+
   for (const [cell, g] of built.entries()) {
     const positionOffset = meshOffset
     Buffer.from(g.positions.buffer, g.positions.byteOffset, g.positions.byteLength).copy(mesh, meshOffset)
@@ -268,6 +322,10 @@ function main(): void {
       particleOffset,
       particleCount: g.particles.length / 2,
       sdfCell: cell,
+      // 筆順を持たない字は -1。シェーダ側はこれを見て運びの判定を素通りさせる
+      orderCell: orderCells.get(g.key) ?? -1,
+      // 画ごとの [起筆, 終筆] を平らに並べたもの。持たない字は空
+      strokeSpans: (g.order?.spans ?? []).flat().map((t) => Number(t.toFixed(5))),
     }
     particleOffset += g.particles.byteLength
   }
@@ -277,6 +335,7 @@ function main(): void {
   writeFileSync(join(OUT_BIN, 'mesh.bin'), mesh)
   writeFileSync(join(OUT_BIN, 'particles.bin'), particles)
   writeFileSync(join(OUT_BIN, 'sdf.bin'), sdf)
+  writeFileSync(join(OUT_BIN, 'order.bin'), order)
   writeFileSync(
     join(OUT_TS, 'glyphs.json'),
     JSON.stringify(
@@ -289,6 +348,13 @@ function main(): void {
           extent: SDF_EXTENT,
           spread: SDF_SPREAD,
         },
+        order: {
+          res: ORDER_RES,
+          columns: ORDER_COLUMNS,
+          rows: orderRows,
+          extent: ORDER_EXTENT,
+          count: ordered.length,
+        },
         glyphs: index,
       },
       null,
@@ -300,7 +366,8 @@ function main(): void {
   console.log(
     `glyphs: ${built.length} 件 / mesh ${(meshBytes / 1e6).toFixed(2)}MB / ` +
       `particles ${(particleBytes / 1e6).toFixed(2)}MB (${totalParticles.toLocaleString()} 点) / ` +
-      `sdf ${(sdf.byteLength / 1e6).toFixed(2)}MB (${sdfWidth}x${sdfHeight})`,
+      `sdf ${(sdf.byteLength / 1e6).toFixed(2)}MB (${sdfWidth}x${sdfHeight}) / ` +
+      `order ${ordered.length} 字 (${ordered.map((g) => g.key).join('')})`,
   )
 }
 

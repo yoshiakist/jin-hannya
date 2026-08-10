@@ -79,6 +79,19 @@ function cubic(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2, t: number): Vec2 {
  * 塗り図形しか扱わないため、開いたサブパスも終点と始点を結んで閉じる。
  */
 export function flattenPath(d: string): Vec2[][] {
+  return flatten(d, 3)
+}
+
+/**
+ * `d` 属性を**開いたまま**の折れ線の配列へ変換する。
+ * `*_path.svg`（筆順の中心線）は塗りではなく運びなので、閉じずに 1 本 2 点から拾う。
+ * サブパスの並びがそのまま画の順になる。
+ */
+export function flattenPolylines(d: string): Vec2[][] {
+  return flatten(d, 2)
+}
+
+function flatten(d: string, minPoints: number): Vec2[][] {
   const contours: Vec2[][] = []
   let current: Vec2[] = []
   let cursor: Vec2 = { x: 0, y: 0 }
@@ -91,7 +104,7 @@ export function flattenPath(d: string): Vec2[][] {
     current.push(p)
   }
   const finish = () => {
-    if (current.length >= 3) contours.push(current)
+    if (current.length >= minPoints) contours.push(current)
     current = []
   }
 

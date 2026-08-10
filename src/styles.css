@@ -63,6 +63,21 @@ body {
   cursor: default;
 }
 
+/* ロゴを書いているあいだ（→ src/scene/Splash.tsx）。
+   面は暗闇のままなので、字も操作も出さない。ロゴが薄れ始めるとこの指定が外れ、
+   経文の滲み出しと同じ間でオーバーレイが現れる */
+.app.splashing .stage {
+  pointer-events: none;
+}
+
+.app.splashing .overlay {
+  opacity: 0;
+}
+
+.app.splashing .overlay > * {
+  pointer-events: none;
+}
+
 /* 遷移中は入力を受けない（FSM の zooming-in / zooming-out 相） */
 .app.phase-zooming-in,
 .app.phase-zooming-out {
@@ -92,6 +107,9 @@ body {
   position: absolute;
   inset: 0;
   pointer-events: none;
+  /* ロゴが薄れるのと同じ尺で現れる（`.app.splashing` が外れたとき）。
+     以後の出入りはブロックごとの motion が持つので、ここは初回にしか効かない */
+  transition: opacity 900ms ease;
 
   /* 大書・図の実測（Overlay.tsx が毎リサイズで入れる）。いずれも画面右端からの距離。
      ここに書いた値は実測が入るまでの控え */

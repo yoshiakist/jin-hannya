@@ -31,6 +31,7 @@
 | ビルド基盤 | Next.js 16（App Router、`output: 'export'`）+ TS + React 19 / r3f v9 / three 0.185。アプリ本体は `app/layout.tsx` で永続させ、`ssr: false` の dynamic import でクライアント専用。`WebGPURenderer` を async 初期化し、WebGPU が取れなければ WebGL2 バックエンドへ落ちる。init 後に実バックエンドを見てティアを訂正する |
 | YAML / Markdown | `scripts/build-content.ts` がビルド時に 1 本の JSON（`src/generated/content.json`）へ束ね、あわせて `assets/`（筆文字 SVG・音源）を `public/` へコピーする。ランタイムに YAML パーサを載せない |
 | グリフ前計算 | `scripts/build-glyphs.ts`。SVG パース → 平坦化 → 穴の判定 → 三角形分割 → 面積重み付きサンプリングまで自前（依存は three の `ShapeUtils` のみ）。127 字 + 円相 = 128 件 |
+| 筆順の前計算 | `scripts/stroke-order.ts`。`<字>_path.svg`（筆順どおりに並んだ中心線）から 192×192 / 字の 8bit アトラス（`order.bin`）を焼く。各画素に「何番目に書かれるか」が 0〜1 で入る。用意があるのはロゴの 3 字だけ |
 | グロー用 SDF | `scripts/sdf.ts`。8SSEDT で 64×64 / 字の 8bit アトラス（1024×512、約 0.5MB）。発光の縁が字形をなぞるのはこれによる |
 | 円相 | `Y` 反転・非正方形 viewBox・断片パス約 40 本を含めて取り込み済み |
 | コンテンツ | 21 ノードの YAML + 21 本の解説 Markdown。zod スキーマ + 静的検証。原稿は深度ごとに役割を分ける（→ `doc-writing`） |
@@ -53,6 +54,7 @@
 | 青白の濃さ | `VISITED` / `VISITED_GLOW` / `VISITED_GLOW_STRENGTH` は「墨と見分けがつく最小限」を狙った初期値。Tier 1 実機と明るい部屋で見て詰める |
 | hover のフェードと滲み | `FOCUS_FADE` / `GLOW_NEAR` / `GLOW_FAR` / `GLOW_STRENGTH` / `GLOW_OPACITY` は画面で見て詰める前提の初期値 |
 | `circle` の引き出し線 | 大書の縦中心から円相の右端へ、段差を挟んで水平に入る折れ線（`connectorPath`）。段差の位置（`CONNECTOR_BEND_*`）と濃さは画面で見て詰める前提の初期値 |
+| 起動のロゴ（スプラッシュ） | 暗闇に「深般若」を縦に、`assets/svg/<字>_path.svg` の筆順どおりに書く（`scene/Splash.tsx`）。中心線から焼いた筆順パラメータ場（`scripts/stroke-order.ts` → `public/glyphs/order.bin`）を塗りのグリフに重ね、墨・かすれ・滲みは紙面と同じ経路。1440x810 の headless で、深 → 般 → 若 の順に画が増えること・筆先に琥珀が残ること・書いているあいだ紙面が透けないことを確認。**根を直接開いたときだけ**出る（L1 以降からの復帰・深いパスの直接ロード・`prefers-reduced-motion`・Tier 3 では出ない）。触れると書き上がりへ飛ぶ。尺（`WRITE_MS` 0.82 秒 / 字、`HOLD_MS` / `FADE_MS`）と字の大きさは画面で見て詰める前提の初期値 |
 | L0 の初出の滲み出し | 起動時、経文の頭から末尾へ `REVEAL_SPREAD`（3 秒）ずらして現れ、字の中は左上から右下へ墨が回る（`revealMask`）。尺・縁の幅（`REVEAL_DURATION` / `REVEAL_EDGE` / `REVEAL_WOBBLE`）は画面で見て詰める前提の初期値で、動くところを見ていない |
 
 ## 実装済みだが未確認

@@ -25,6 +25,10 @@ interface GlyphEntry {
   particleCount: number
   /** SDF アトラス上のセル番号 */
   sdfCell: number
+  /** 筆順アトラス上のセル番号。中心線（`<字>_path.svg`）を持たない字は -1 */
+  orderCell: number
+  /** 画ごとの [起筆, 終筆]（0〜1）を平らに並べたもの。中心線を持たない字は空 */
+  strokeSpans: number[]
 }
 
 const entries = glyphIndex.glyphs as Record<string, GlyphEntry>
@@ -41,12 +45,25 @@ export const SDF = glyphIndex.sdf as {
   spread: number
 }
 
+/**
+ * 筆順アトラスの寸法（`scripts/stroke-order.ts` の定数の写し）。
+ * `count` が 0 なら中心線を用意した字が 1 つも無い＝アトラスが空。
+ */
+export const ORDER = glyphIndex.order as {
+  res: number
+  columns: number
+  rows: number
+  extent: number
+  count: number
+}
+
 /** 円相（assets/pattern/circle.svg）はグリフと同じ経路で載せる。字ではないので別キー */
 export const CIRCLE_KEY = '@circle'
 
 let meshBuffer: ArrayBuffer | null = null
 let particleBuffer: ArrayBuffer | null = null
 let sdfBuffer: ArrayBuffer | null = null
+let orderBuffer: ArrayBuffer | null = null
 let loading: Promise<void> | null = null
 
 export function loadGlyphs(): Promise<void> {
@@ -55,10 +72,13 @@ export function loadGlyphs(): Promise<void> {
       fetch('/glyphs/mesh.bin').then((r) => r.arrayBuffer()),
       fetch('/glyphs/particles.bin').then((r) => r.arrayBuffer()),
       fetch('/glyphs/sdf.bin').then((r) => r.arrayBuffer()),
-    ]).then(([mesh, particles, sdf]) => {
+      // 筆順は数字ぶんしか無い（空のこともある）。他と同じく起動時に 1 度だけ取る
+      ORDER.count > 0 ? fetch('/glyphs/order.bin').then((r) => r.arrayBuffer()) : Promise.resolve(null),
+    ]).then(([mesh, particles, sdf, order]) => {
       meshBuffer = mesh
       particleBuffer = particles
       sdfBuffer = sdf
+      orderBuffer = order
     })
   }
   return loading
@@ -144,6 +164,51 @@ export function glyphSdfTexture(): DataTexture | null {
 /** その字の SDF アトラス上のセル番号。グリフが無ければ `null` */
 export function sdfCellOf(char: string): number | null {
   return entryOf(char)?.sdfCell ?? null
+}
+
+let orderTexture: DataTexture | null = null
+
+/**
+ * 筆順パラメータ場を敷き詰めた 1 枚のテクスチャ。
+ * 赤 1 成分・8bit で、0 = 最初の画の起筆、1 = 最後の画の終筆（→ scripts/stroke-order.ts）。
+ * 距離場と同じくミップは持たない（運びの前後関係が縮小補間で混ざる）。
+ */
+export function glyphOrderTexture(): DataTexture | null {
+  if (orderTexture) return orderTexture
+  if (!orderBuffer || ORDER.count === 0) return null
+
+  orderTexture = new DataTexture(
+    new Uint8Array(orderBuffer),
+    ORDER.columns * ORDER.res,
+    ORDER.rows * ORDER.res,
+    RedFormat,
+    UnsignedByteType,
+  )
+  orderTexture.minFilter = LinearFilter
+  orderTexture.magFilter = LinearFilter
+  orderTexture.wrapS = ClampToEdgeWrapping
+  orderTexture.wrapT = ClampToEdgeWrapping
+  orderTexture.generateMipmaps = false
+  orderTexture.needsUpdate = true
+  return orderTexture
+}
+
+/** その字の筆順アトラス上のセル番号。中心線を持たない字は `null` */
+export function orderCellOf(char: string): number | null {
+  const cell = entryOf(char)?.orderCell ?? -1
+  return cell < 0 ? null : cell
+}
+
+/**
+ * 画ごとの運びの区間 `[起筆, 終筆]`（0〜1）。中心線を持たない字は `null`。
+ * 区間と区間の隙間には、どの画素のパラメータも落ちない（筆を上げている間）。
+ */
+export function strokeSpansOf(char: string): [number, number][] | null {
+  const flat = entryOf(char)?.strokeSpans
+  if (!flat || flat.length < 2) return null
+  const spans: [number, number][] = []
+  for (let i = 0; i + 1 < flat.length; i += 2) spans.push([flat[i]!, flat[i + 1]!])
+  return spans
 }
 
 /**

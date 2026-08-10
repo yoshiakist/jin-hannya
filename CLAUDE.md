@@ -48,7 +48,8 @@ app/        layout.tsx(アプリ本体を全ルートで永続) AppShell.tsx(ssr
             page.tsx / [...path]/page.tsx(metadata・generateStaticParams だけを担う空ページ)
 src/
   scene/    Stage.tsx(Canvas+ティア訂正) Paper.tsx(L0格子) NodeStage.tsx(L1以降/3レイアウト)
-            Transition.tsx(遷移演出) Particles.tsx glyphs.ts tier.ts materials.ts
+            Splash.tsx(起動のロゴ。筆順で書く) Transition.tsx(遷移演出) Particles.tsx
+            glyphs.ts tier.ts materials.ts
   overlay/  Overlay.tsx PaperFallback.tsx SpeakButton.tsx AudioControls.tsx LeftArrow.tsx
   nav/      fsm.ts atoms.ts router.ts(useRouteSync) url.ts(id⇄パスの写像・初期ノード)
   content/  schema.ts loader.ts sutra.ts source.ts(生成 JSON への唯一の入口)
@@ -56,7 +57,8 @@ src/
             node-layout.ts(L1 以降の大書・図の寸法／DOM 用の目印 overlayInsets)
   audio/    index.ts
 scripts/    build-content.ts(YAML/MD→content.json・assets を public/ へ)
-            build-glyphs.ts svg-path.ts sdf.ts(グロー用距離場) validate-graph.ts
+            build-glyphs.ts svg-path.ts sdf.ts(グロー用距離場)
+            stroke-order.ts(筆順パラメータ場) validate-graph.ts
 content/    sutra.txt / graph/*.yaml / docs/*.md
 assets/     svg/(筆文字127) pattern/circle.svg bgm/ sfx/ voice/(未収録)
 ```
@@ -71,6 +73,7 @@ assets/     svg/(筆文字127) pattern/circle.svg bgm/ sfx/ voice/(未収録)
 - `content/sutra.txt` は**文字インデックスの唯一の基準**。ローダが空白を除去して正規形を作り、`range` はその正規形に対する半開区間 `[start, end)`。文字の増減は全 `range` の見直しとセット。行の追加・移動は `range` を動かさないが紙面の見え方を変える。
 - **ランタイムで SVG を触らない。** メッシュ・粒子サンプル・グロー用の符号付き距離場はビルド時に `scripts/build-glyphs.ts` が前計算する。
 - 発光の滲みは**字ごとの距離場**（`createGlowMaterial`）で出す。板の中心から放射させると、どの字でも同じ丸い光になる。
+- `assets/svg/<字>_path.svg` は塗りではなく**筆順どおりに並んだ中心線**（サブパス 1 つ = 1 画）。字の在庫には数えず、ビルド時に筆順パラメータ場へ焼いて起動のロゴが引く。ロゴは**根を直接開いたときだけ**出し、書いているあいだ紙面は畳まず `paperOpacity` で伏せる（→ skill: `ink-visuals`）。
 - 用語を混ぜない: **深度** `L0/L1/L2…`（ユーザーの階層）と **性能ティア** `Tier 1(WebGPU)/2(WebGL2)/3(WebGL不可)`（描画能力）。「Tier」は性能の話にのみ使う。
 - 遷移は相を持つ FSM（`idle → hovered → zooming-in → focused → zooming-out`）。`zooming-*` の間は入力を殺す。
 - 演出は**潜ると戻るで非対称**。潜る = 非フォーカス字が散開・生存字はメッシュのまま連続移動／戻る = 現在字が再配置されつつ粒子がフェードインして凝集。逆再生にはしない。

@@ -27,7 +27,8 @@ import {
   halfWidthFor,
   INITIAL_PAN_X,
 } from '../world/pan.ts'
-import { navAtom, particleScaleAtom, tierAtom } from '../nav/atoms.ts'
+import { navAtom, particleScaleAtom, splashAtom, tierAtom } from '../nav/atoms.ts'
+import { Splash } from './Splash.tsx'
 import { nodeById, root } from '../content/loader.ts'
 
 /** 視野高を VIEW_HEIGHT / 拡大率 に保ち、パンと拡大をカメラへ反映する */
@@ -164,6 +165,7 @@ function FrameBudget() {
 
 function SceneContent() {
   const nav = useAtomValue(navAtom)
+  const splash = useAtomValue(splashAtom)
   // **紙面は一度組んだら畳まない。** 90 字ぶんのマテリアル・属性・描画オブジェクトの用意は
   // マウントし直すたびに払うことになり、その 1 フレームで固まる（どこで固まるかが変わるだけで、
   // 遷移の頭に置いても終わりに置いても同じ）。起動時＝読み込みの間に組み、
@@ -175,6 +177,10 @@ function SceneContent() {
     <>
       <CameraRig />
       <FrameBudget />
+      {/* ロゴを書いているあいだも紙面は出したまま（`paperOpacity` で伏せる）。
+          ここで描画から外すと 90 字ぶんのプログラムの用意がロゴの明け際に来て、
+          いちばん見せたい入れ替わりで固まる（→ Paper.tsx / Splash.tsx） */}
+      {splash !== 'done' && <Splash />}
       <Paper live={paperLive} />
       {showNode && <NodeStage />}
       {/* 字の出入りは粒子と別勘定。Tier 3 でも尺を揃えるため Transition と分けて常に置く */}

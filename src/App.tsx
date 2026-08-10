@@ -13,6 +13,7 @@ import {
   mutedAtom,
   currentNodeAtom,
   markVisitedAtom,
+  splashAtom,
 } from './nav/atoms.ts'
 import { usePanZoomGesture, useNodePanSpring, panXAtom, panBoundsAtom } from './world/pan.ts'
 import { VIEW_HEIGHT } from './world/paper.ts'
@@ -24,6 +25,9 @@ export function App() {
   const isRoot = useAtomValue(isRootAtom)
   const panX = useAtomValue(panXAtom)
   const bounds = useAtomValue(panBoundsAtom)
+  // ロゴを書いているあいだは面に触らせない。薄れ始めた時点で解禁し、
+  // オーバーレイは経文と同じ時間をかけて現れる（→ src/scene/Splash.tsx）
+  const splashing = useAtomValue(splashAtom) === 'writing'
   const containerRef = useRef<HTMLDivElement>(null)
 
   useRouteSync()
@@ -40,7 +44,7 @@ export function App() {
   return (
     <div
       ref={containerRef}
-      className={`app tier-${tier} phase-${phase}`}
+      className={`app tier-${tier} phase-${phase}${splashing ? ' splashing' : ''}`}
       // WebGPU レイヤーと DOM レイヤーが同じ変換を読むことで両者が同期する。
       // カメラの x をピクセルへ直したものを CSS 変数に流し、Tier 3 の紙面もこれで動く
       style={

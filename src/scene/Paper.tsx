@@ -37,7 +37,7 @@ import {
 } from './materials.ts'
 import { CELL_X, CELL_Y, GLYPH_SIZE, gridPosition } from '../world/paper.ts'
 import { isGestureClick } from '../world/pan.ts'
-import { navAtom, acceptsInputAtom, visitedIndicesAtom } from '../nav/atoms.ts'
+import { navAtom, acceptsInputAtom, splashAtom, visitedIndicesAtom } from '../nav/atoms.ts'
 import { SUTRA_INDEX_TO_NODE } from '../content/loader.ts'
 import { carriedNodeId } from './carry.ts'
 import { swayAt, swayPhase } from './sway.ts'
@@ -127,6 +127,8 @@ export function Paper({ live = true }: { live?: boolean }) {
   const hoveredId = useAtomValue(navAtom).hoveredId
   /** 読破した語に属する字（0/1）。中身が変わるのは L1 以降から戻ってきたときだけ */
   const visitedTargets = useAtomValue(visitedIndicesAtom)
+  /** ロゴを書いているあいだは経文の時計を止めておく（→ src/scene/Splash.tsx） */
+  const splash = useAtomValue(splashAtom)
 
   // 初出の滲み出しは起動して紙面が出るときの 1 度きり。
   // 時計は 0（＝透明）から始まっているので、ここですることは「2 度目なら出し終わりへ飛ばす」だけ。
@@ -136,10 +138,35 @@ export function Paper({ live = true }: { live?: boolean }) {
     introPlayed = true
   }, [])
 
+  /**
+   * ロゴを書いているあいだ、紙面は**描いたまま濃さだけ 0 にして**伏せる。
+   * 描画から外す（`visible = false`）と、90 字ぶんのプログラムとバッファの用意が
+   * ロゴの明け際に一度に来て、いちばん見せたい入れ替わりで固まる。
+   * 経文の墨は初出の時計（`revealTime` = 0）でどのみち透明だが、読破の青白は
+   * 触れずとも点いてしまうので、深度ぜんたいの濃さで止める。
+   *
+   * 戻すのは**自分が伏せたときだけ**、'writing' を抜けた 1 回。相を決め打ちで見ると、
+   * 1 フレームが長引いて 'fading' を飛び越したときに伏せたままになる。
+   * 伏せていないときに書かないのは、薄れているあいだに潜られたとき
+   * （`.stage` は 'fading' で操作を受け付ける）に `StageFade` と取り合わないため。
+   */
+  const hidden = useRef(false)
+  useEffect(() => {
+    if (splash === 'writing') {
+      paperOpacity.value = 0
+      hidden.current = true
+    } else if (hidden.current) {
+      paperOpacity.value = 1
+      hidden.current = false
+    }
+  }, [splash])
+
   // 沈み込みは紙面で 1 つ。hover の変化そのものは行き先だけを書き、寄せるのはここ
   useFrame((_, delta) => {
-    // 初出の時計だけは伏せていても進める（潜ったまま止めると、戻ったとき途中から書き始める）
-    if ((revealTime.value as number) < REVEAL_TOTAL) {
+    // 初出の時計だけは伏せていても進める（潜ったまま止めると、戻ったとき途中から書き始める）。
+    // ただしロゴを書いているあいだだけは止める。ここで進めると、ロゴが薄れたときには
+    // 経文が刷り上がっていて、紙面が自分で書かれていくところを見せられない
+    if (splash !== 'writing' && (revealTime.value as number) < REVEAL_TOTAL) {
       revealTime.value = Math.min(REVEAL_TOTAL, (revealTime.value as number) + delta)
     }
     if (!live) return

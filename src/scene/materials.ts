@@ -21,7 +21,7 @@ import {
   vec2,
   vec3,
 } from 'three/tsl'
-import { SDF, glyphSdfTexture } from './glyphs.ts'
+import { SDF, ORDER, glyphSdfTexture, glyphOrderTexture } from './glyphs.ts'
 
 export const INK = new Color('#f2f0ec')
 export const TEXT_DIM = new Color('#8e8a84')
@@ -305,6 +305,102 @@ export function createGlowMaterial(
     .mul(amount)
     .mul(transitionAlpha(typeof persist === 'number' ? float(persist) : persist, layer))
   return material
+}
+
+/* ---- 筆順の運び -----------------------------------------------------------
+ * ロゴ（深般若）だけは、字が一斉に滲み出すのではなく**画の順に書かれていく**。
+ * 前計算した筆順パラメータ場（scripts/stroke-order.ts）を引くと、その画素が何番目に
+ * 書かれるかが 0〜1 で分かるので、進行 `progress` を上げるだけで筆が運ばれる。
+ * 滲み方（`inkDensity` のかすれ・`createGlowMaterial` の発光）は紙面の字とまったく同じ経路を通り、
+ * その効き始めだけが運びに従う。
+ */
+
+/** 筆先の柔らかさ（運びのパラメータ単位）。狭いと刃、広いと筆ではなく霧になる */
+const BRUSH_EDGE = 0.035
+/** 筆先の縁の崩れ。等値線どおりに切ると拭き取りに見えるので、字ごとに崩す */
+const BRUSH_WOBBLE = 0.008
+/** 崩しの粗さ（セル 1 辺あたりの波数） */
+const BRUSH_WOBBLE_FREQ = 9
+/** 筆先に残る潤み（運びのパラメータ単位）。ここを過ぎた墨は乾いたものとして光らない */
+const BRUSH_TIP = 0.07
+
+/** 字面 [-0.5, 0.5]^2 のメッシュ上での、筆順アトラスのセル内座標（0〜1） */
+export function glyphCellLocal(): Node<'vec2'> {
+  return positionGeometry.xy.div(2 * ORDER.extent).add(0.5)
+}
+
+/** `GLOW_PLANE` の板（PlaneGeometry(1,1)）上での、同じセル内座標 */
+export function planeCellLocal(): Node<'vec2'> {
+  return positionGeometry.xy.add(0.5)
+}
+
+/**
+ * その画素が書かれる順（0〜1）。中心線を持たない字（`cell` < 0）では 0 を返し、
+ * 「もう書かれている」＝運びの判定を素通りさせる。
+ */
+function strokeOrderAt(cell: Node<'float'>, local: Node<'vec2'>): Node<'float'> {
+  const atlas = glyphOrderTexture()
+  if (!atlas) return float(0)
+
+  const valid = step(-0.5, cell)
+  const safe = cell.max(0)
+  const uv = vec2(
+    safe.mod(ORDER.columns).add(local.x).div(ORDER.columns),
+    safe.div(ORDER.columns).floor().add(local.y).div(ORDER.rows),
+  )
+  return texture(atlas, uv).r.mul(valid)
+}
+
+/** 筆先から見た進み具合。負 = まだ筆が来ていない、正 = 通り過ぎた（運びのパラメータ単位） */
+function brushLead(cell: Node<'float'>, progress: Node<'float'>, local: Node<'vec2'>): Node<'float'> {
+  const order = strokeOrderAt(cell, local)
+  const wobble = mx_noise_float(vec3(local.mul(BRUSH_WOBBLE_FREQ), cell)).mul(BRUSH_WOBBLE)
+  // 筆先が字面を渡り切るまで進める（縁の幅ぶんだけ余分に走らせる）
+  return progress.mul(1 + BRUSH_EDGE).sub(order.add(wobble))
+}
+
+/** 墨が置かれたか（0〜1）。`progress` が 1 で字がすべて書き上がる */
+export function brushWet(cell: Node<'float'>, progress: Node<'float'>, local: Node<'vec2'>): Node<'float'> {
+  return clamp(brushLead(cell, progress, local).div(BRUSH_EDGE), 0, 1)
+}
+
+/**
+ * 筆先の潤み（0〜1）。いま筆が置かれているところだけが 1 で、後ろへ向かって乾いていく。
+ * 発光（`createGlowMaterial` の `amount`）へ渡すと、光が筆を追って走る。
+ */
+export function brushTip(cell: Node<'float'>, progress: Node<'float'>, local: Node<'vec2'>): Node<'float'> {
+  const lead = brushLead(cell, progress, local)
+  // 筆の前は光らせない。後ろは BRUSH_TIP で乾く
+  return clamp(lead.div(BRUSH_EDGE), 0, 1).mul(clamp(lead.div(BRUSH_TIP).oneMinus(), 0, 1))
+}
+
+/**
+ * 筆順どおりに書かれていく単体グリフ用マテリアル。
+ * 墨の質感は `createInkMaterial` と同じで、現れ方だけが運びに従う。
+ * `cell` は筆順アトラスのセル番号（`orderCellOf`）、`progress` は 0→1 で進める。
+ */
+export function createBrushMaterial(
+  cell: number,
+  progress: Node<'float'>,
+): {
+  material: MeshBasicNodeMaterial
+  color: { value: Color }
+  opacity: { value: number }
+  seed: { value: number }
+  /** その字のワールドでの一辺。メッシュの scale と同じ値を入れる */
+  scale: { value: number }
+} {
+  const color = uniform(INK.clone())
+  const opacity = uniform(1)
+  const seed = uniform(0)
+  const scale = uniform(1)
+
+  const material = new MeshBasicNodeMaterial({ transparent: true, toneMapped: false })
+  const density = inkDensity(seed, scale)
+  material.colorNode = color.mul(inkShade(density))
+  material.opacityNode = opacity.mul(inkAlpha(density)).mul(brushWet(float(cell), progress, glyphCellLocal()))
+
+  return { material, color, opacity, seed, scale }
 }
 
 /**
