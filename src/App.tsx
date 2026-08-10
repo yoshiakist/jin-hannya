@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useAtomValue, useSetAtom } from 'jotai'
 import { Stage } from './scene/Stage.tsx'
+import { StageBoundary } from './scene/StageBoundary.tsx'
 import { Overlay } from './overlay/Overlay.tsx'
 import { AudioConsent } from './overlay/AudioConsent.tsx'
 import { PaperFallback } from './overlay/PaperFallback.tsx'
@@ -16,6 +17,8 @@ import {
   markVisitedAtom,
   splashAtom,
   audioConsentAtom,
+  stageFailedAtom,
+  failStageAtom,
 } from './nav/atoms.ts'
 import { usePanZoomGesture, useNodePanSpring, panXAtom, panBoundsAtom } from './world/pan.ts'
 import { VIEW_HEIGHT } from './world/paper.ts'
@@ -35,6 +38,9 @@ export function App() {
   /** 音の断りへの答え。null のあいだは音を一切起こさない */
   const consent = useAtomValue(audioConsentAtom)
   const muted = useAtomValue(mutedAtom)
+  /** WebGPU レイヤーが立たなかった。ティアの判定とは別に、DOM の紙面へ落とす（→ scene/StageBoundary.tsx） */
+  const stageFailed = useAtomValue(stageFailedAtom)
+  const fail = useSetAtom(failStageAtom)
   const splashing = splash === 'writing' || splash === 'asking'
   const closed = splash !== 'done'
   const containerRef = useRef<HTMLDivElement>(null)
@@ -48,7 +54,7 @@ export function App() {
 
   // Tier 3 の紙面は DOM の段組みなので拡大に追従できない。そこではパンだけを許す。
   // L1 以降（node）は拡大を持たず、左右のパンだけが効く
-  usePanZoomGesture(containerRef, isRoot ? 'paper' : 'node', tier !== 3)
+  usePanZoomGesture(containerRef, isRoot ? 'paper' : 'node', tier !== 3 && !stageFailed)
   // L1 以降のパンのばね。GPU レイヤーと DOM が同じ値を読むよう、補間は atom 側で 1 度だけ掛ける
   useNodePanSpring()
 
@@ -64,7 +70,15 @@ export function App() {
         } as React.CSSProperties
       }
     >
-      {tier === 3 ? isRoot && <PaperFallback /> : <Stage />}
+      {/* WebGPU レイヤーが立たない環境（Tier 3）と、立てようとして失敗した場合（`stageFailed`）は
+          どちらも DOM の紙面で成立させる。失敗を拾わないと、真っ黒の画面のまま何も起きない */}
+      {tier === 3 || stageFailed ? (
+        isRoot && <PaperFallback />
+      ) : (
+        <StageBoundary onFail={fail}>
+          <Stage />
+        </StageBoundary>
+      )}
       <Overlay />
       {/* 断りはオーバーレイの外。ロゴが出ているあいだ `.overlay` は伏せてある */}
       <AudioConsent />

@@ -6,16 +6,21 @@
  * 三角形分割も粒子サンプリングもここで済ませ、バイナリで同梱する。
  *
  * 出力
- *   public/glyphs/mesh.bin      … 頂点座標(f32 xy) + インデックス(u32) を全字ぶん連結
- *   public/glyphs/particles.bin … 粒子ホームポジション(f32 xy) を全字ぶん連結
- *   public/glyphs/sdf.bin       … 符号付き距離場(u8) を 1 枚のアトラスに敷き詰めたもの
- *   public/glyphs/order.bin     … 筆順パラメータ場(u8)。`<字>_path.svg` がある字だけ
- *   src/generated/glyphs.json   … 上記へのオフセット表
+ *   public/glyphs/mesh.<hash>.bin      … 頂点座標(f32 xy) + インデックス(u32) を全字ぶん連結
+ *   public/glyphs/particles.<hash>.bin … 粒子ホームポジション(f32 xy) を全字ぶん連結
+ *   public/glyphs/sdf.<hash>.bin       … 符号付き距離場(u8) を 1 枚のアトラスに敷き詰めたもの
+ *   public/glyphs/order.<hash>.bin     … 筆順パラメータ場(u8)。`<字>_path.svg` がある字だけ
+ *   src/generated/glyphs.json          … 上記へのオフセット表（`files` に実ファイル名と寸法）
+ *
+ * **bin の名前には中身のハッシュを入れる。** オフセット表はハッシュ付きの JS へ焼かれるので、
+ * bin が固定名だと「新しいオフセット表 × キャッシュに残った古い bin」の組が成立してしまい、
+ * 字を 1 つ足して出し直した先で再訪問者だけが範囲外アクセスで落ちる。
  *
  * 座標系は three に合わせて **Y 上向き**、字面が `[-0.5, 0.5]^2` に収まるよう正規化する。
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, rmSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { dirname, join, basename } from 'node:path'
 import { ShapeUtils, Vector2 } from 'three'
@@ -28,6 +33,17 @@ const SVG_DIR = join(ROOT, 'assets/svg')
 const PATTERN_DIR = join(ROOT, 'assets/pattern')
 const OUT_BIN = join(ROOT, 'public/glyphs')
 const OUT_TS = join(ROOT, 'src/generated')
+
+/**
+ * bin を `<名前>.<中身のハッシュ>.bin` で書き出し、索引に載せる分（名前と長さ）を返す。
+ * 長さも持たせるのは、取ってきた bin が索引と組で正しいかをランタイムが確かめられるようにするため。
+ */
+function emit(name: string, data: Buffer): { name: string; bytes: number } {
+  const hash = createHash('sha256').update(data).digest('hex').slice(0, 8)
+  const file = `${name}.${hash}.bin`
+  writeFileSync(join(OUT_BIN, file), data)
+  return { name: file, bytes: data.byteLength }
+}
 
 /** 1 文字あたりの粒子数。README の見積り（111 字 × 4,000 点 ≒ 45 万点）に合わせる */
 const PARTICLES_PER_GLYPH = 4000
@@ -332,15 +348,23 @@ function main(): void {
 
   mkdirSync(OUT_BIN, { recursive: true })
   mkdirSync(OUT_TS, { recursive: true })
-  writeFileSync(join(OUT_BIN, 'mesh.bin'), mesh)
-  writeFileSync(join(OUT_BIN, 'particles.bin'), particles)
-  writeFileSync(join(OUT_BIN, 'sdf.bin'), sdf)
-  writeFileSync(join(OUT_BIN, 'order.bin'), order)
+  // 前回のハッシュ付き bin は残しておくと出力に溜まり続けるので毎回掃く
+  for (const file of readdirSync(OUT_BIN)) {
+    if (file.endsWith('.bin')) rmSync(join(OUT_BIN, file))
+  }
+  const files = {
+    mesh: emit('mesh', mesh),
+    particles: emit('particles', particles),
+    sdf: emit('sdf', sdf),
+    order: emit('order', order),
+  }
   writeFileSync(
     join(OUT_TS, 'glyphs.json'),
     JSON.stringify(
       {
         particlesPerGlyph: PARTICLES_PER_GLYPH,
+        // ランタイムはここに書かれた名前だけを取りに行く（固定名では引かない）
+        files,
         sdf: {
           res: SDF_RES,
           columns: SDF_COLUMNS,

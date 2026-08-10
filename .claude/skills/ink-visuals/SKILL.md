@@ -85,7 +85,9 @@ description: 深般若の見た目の設計（デザイントークン、墨の�
 
 118 字 + 円相 = 119 件、mesh 約 5.7MB / 粒子 49.2 万点 / SDF 約 0.5MB。依存は three の `ShapeUtils` のみ。
 
-出力は `src/generated/`（索引）と `public/glyphs/`（`mesh.bin` / `particles.bin` / `sdf.bin`）。**どちらも生成物でコミットしない。** clone 直後は `npm run content:build` を先に走らせる。
+出力は `src/generated/`（索引）と `public/glyphs/`（`mesh.<ハッシュ>.bin` / `particles.…` / `sdf.…`）。**どちらも生成物でコミットしない。** clone 直後は `npm run content:build` を先に走らせる。
+
+**bin の名前には中身のハッシュを入れ、ランタイムは索引の `files` に書かれた名前だけを取りに行く。** 索引はハッシュ付きの JS に焼かれるので、bin が固定名だと「新しい索引 × キャッシュに残った古い bin」の組が成立し、字を 1 つ足して出し直した先で再訪問者だけが範囲外アクセスで落ちる。長さも索引に載せてあり、食い違えば読み込みを失敗させる（黙って壊れた面を出さない）。取れなかった場合は Tier 1/2 でも DOM の紙面へ落とす（`stageFailedAtom` → `scene/StageBoundary.tsx`）。
 
 ## 筆順の運び（`assets/svg/<字>_path.svg`）
 

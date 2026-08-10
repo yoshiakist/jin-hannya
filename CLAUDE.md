@@ -91,6 +91,7 @@ assets/     svg/(筆文字127) pattern/circle.svg bgm/ sfx/ voice/(未収録)
 
 ## 既知の落とし穴（実装時に踏んだもの）
 
+- **`public/glyphs/*.bin` はハッシュ付きの名前で出し、索引の `files` から引く。** 索引はハッシュ付き JS に焼かれるので、bin が固定名だと字を 1 つ足して出し直した瞬間、古い bin をキャッシュに持つ再訪問者が「新しいオフセット表 × 古い bin」で落ちる。読み込みの失敗（取れない・長さが索引と違う・レンダラが立たない・描画中の例外）は必ず拾って DOM の紙面へ落とす（`stageFailedAtom` / `scene/StageBoundary.tsx`）。拾わないと真っ黒の画面のまま何も起きない。
 - `navigator.gpu` があってもアダプタが無い環境がある。**`renderer.init()` 後に実バックエンドを見てティアを訂正する**。
 - hover 発光に `instanceColor` は使わない（`WebGPURenderer` のノードマテリアル経路で効かない）。インスタンス属性 + TSL で書く。
 - 当たり判定用オブジェクトを `visible={false}` にしない（レイキャスト対象から外れる）。透明マテリアルで置く。

@@ -57,6 +57,12 @@ export const ORDER = glyphIndex.order as {
   count: number
 }
 
+/**
+ * bin の実ファイル名と長さ。名前には中身のハッシュが入っている（→ scripts/build-glyphs.ts）。
+ * この索引はハッシュ付きの JS に焼かれるので、bin 側も名前が変われば古い版と混ざりようがない。
+ */
+const FILES = glyphIndex.files as Record<'mesh' | 'particles' | 'sdf' | 'order', { name: string; bytes: number }>
+
 /** 円相（assets/pattern/circle.svg）はグリフと同じ経路で載せる。字ではないので別キー */
 export const CIRCLE_KEY = '@circle'
 
@@ -66,20 +72,45 @@ let sdfBuffer: ArrayBuffer | null = null
 let orderBuffer: ArrayBuffer | null = null
 let loading: Promise<void> | null = null
 
+/**
+ * bin を 1 本取る。取れなかった場合・索引と長さが食い違う場合は投げる。
+ * 長さの照合は、キャッシュや配信の都合で索引と違う版の bin が返ってきた場合の歯止め
+ * （そのまま使うと、字ごとのオフセットが実体の外を指して `RangeError` で画面ごと落ちる）。
+ */
+async function fetchBin(file: { name: string; bytes: number }): Promise<ArrayBuffer> {
+  const response = await fetch(`/glyphs/${file.name}`)
+  if (!response.ok) throw new Error(`[glyphs] ${file.name} が取れない (HTTP ${response.status})`)
+  const buffer = await response.arrayBuffer()
+  if (buffer.byteLength !== file.bytes) {
+    throw new Error(`[glyphs] ${file.name} の長さが索引と違う (${buffer.byteLength} ≠ ${file.bytes})`)
+  }
+  return buffer
+}
+
+/**
+ * 失敗したら reject する。呼び手（Stage）はそれを拾って DOM の紙面へ落とすこと
+ * （拾わないと ready が立たないまま真っ黒になる）。
+ */
 export function loadGlyphs(): Promise<void> {
   if (!loading) {
     loading = Promise.all([
-      fetch('/glyphs/mesh.bin').then((r) => r.arrayBuffer()),
-      fetch('/glyphs/particles.bin').then((r) => r.arrayBuffer()),
-      fetch('/glyphs/sdf.bin').then((r) => r.arrayBuffer()),
+      fetchBin(FILES.mesh),
+      fetchBin(FILES.particles),
+      fetchBin(FILES.sdf),
       // 筆順は数字ぶんしか無い（空のこともある）。他と同じく起動時に 1 度だけ取る
-      ORDER.count > 0 ? fetch('/glyphs/order.bin').then((r) => r.arrayBuffer()) : Promise.resolve(null),
-    ]).then(([mesh, particles, sdf, order]) => {
-      meshBuffer = mesh
-      particleBuffer = particles
-      sdfBuffer = sdf
-      orderBuffer = order
-    })
+      ORDER.count > 0 ? fetchBin(FILES.order) : Promise.resolve(null),
+    ])
+      .then(([mesh, particles, sdf, order]) => {
+        meshBuffer = mesh
+        particleBuffer = particles
+        sdfBuffer = sdf
+        orderBuffer = order
+      })
+      .catch((error) => {
+        // 次のマウントで取り直せるよう、失敗した約束は握らない
+        loading = null
+        throw error
+      })
   }
   return loading
 }

@@ -27,7 +27,7 @@ import {
   halfWidthFor,
   INITIAL_PAN_X,
 } from '../world/pan.ts'
-import { navAtom, particleScaleAtom, splashAtom, tierAtom } from '../nav/atoms.ts'
+import { failStageAtom, navAtom, particleScaleAtom, splashAtom, tierAtom } from '../nav/atoms.ts'
 import { Splash } from './Splash.tsx'
 import { nodeById, root } from '../content/loader.ts'
 
@@ -193,9 +193,24 @@ function SceneContent() {
 export function Stage() {
   const [ready, setReady] = useState(false)
   const setTier = useSetAtom(tierAtom)
+  const fail = useSetAtom(failStageAtom)
   useEffect(() => {
-    loadGlyphs().then(() => setReady(true))
-  }, [])
+    let disposed = false
+    loadGlyphs().then(
+      () => {
+        if (!disposed) setReady(true)
+      },
+      (error: unknown) => {
+        // 字が無ければこの層は成立しない。黙って ready を待ち続けると真っ黒のまま止まるので、
+        // DOM の紙面（PaperFallback）へ落とす（→ src/App.tsx）
+        console.error(error)
+        if (!disposed) fail()
+      },
+    )
+    return () => {
+      disposed = true
+    }
+  }, [fail])
 
   if (!ready) return null
 
@@ -214,13 +229,22 @@ export function Stage() {
       }}
       dpr={cappedDpr()}
       gl={async (props) => {
-        const renderer = new THREE.WebGPURenderer(props as THREE.WebGPURendererParameters)
-        await renderer.init()
-        // navigator.gpu があってもアダプタが取れず WebGL2 バックエンドへ落ちることがある。
-        // 粒子数はバックエンドの実態に合わせる必要があるので、init 後の結果でティアを訂正する
-        const backend = renderer.backend as { isWebGPUBackend?: boolean } | undefined
-        if (!backend?.isWebGPUBackend) setTier(2)
-        return renderer
+        try {
+          const renderer = new THREE.WebGPURenderer(props as THREE.WebGPURendererParameters)
+          await renderer.init()
+          // navigator.gpu があってもアダプタが取れず WebGL2 バックエンドへ落ちることがある。
+          // 粒子数はバックエンドの実態に合わせる必要があるので、init 後の結果でティアを訂正する
+          const backend = renderer.backend as { isWebGPUBackend?: boolean } | undefined
+          if (!backend?.isWebGPUBackend) setTier(2)
+          return renderer
+        } catch (error) {
+          // WebGPU も WebGL2 も立たない環境（判定は通るのに初期化で落ちる場合がある）。
+          // ここで投げると r3f の中で拾われずに握り潰されるので、旗を立てて DOM の紙面へ渡し、
+          // この Canvas 自身は決着させないまま外す（旗を見た App が畳む）
+          console.error(error)
+          fail()
+          return await new Promise<THREE.WebGPURenderer>(() => {})
+        }
       }}
     >
       <Suspense fallback={null}>

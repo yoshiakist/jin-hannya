@@ -32,6 +32,7 @@
 | YAML / Markdown | `scripts/build-content.ts` がビルド時に 1 本の JSON（`src/generated/content.json`）へ束ね、あわせて `assets/`（筆文字 SVG・音源）を `public/` へコピーする。ランタイムに YAML パーサを載せない |
 | グリフ前計算 | `scripts/build-glyphs.ts`。SVG パース → 平坦化 → 穴の判定 → 三角形分割 → 面積重み付きサンプリングまで自前（依存は three の `ShapeUtils` のみ）。127 字 + 円相 = 128 件 |
 | 筆順の前計算 | `scripts/stroke-order.ts`。`<字>_path.svg`（筆順どおりに並んだ中心線）から 192×192 / 字の 8bit アトラス（`order.bin`）を焼く。各画素に「何番目に書かれるか」が 0〜1 で入る。用意があるのはロゴの 3 字だけ |
+| bin の名前と読み込みの失敗 | `public/glyphs/*.bin` は `mesh.<中身のハッシュ>.bin` で出し、ランタイムは索引（ハッシュ付き JS に焼かれる）の `files` に書かれた名前だけを取りに行く。固定名だと「新しい索引 × キャッシュの古い bin」が成立し、字を 1 つ足した先で再訪問者だけが範囲外アクセスで落ちる。長さも索引で照合する。取れない・食い違う・レンダラが立たない・描画中に落ちた場合は、Tier 1/2 でも DOM の紙面へ落とす（`stageFailedAtom` / `scene/StageBoundary.tsx`）。1440x810 の headless で、bin を消した場合・途中で切った場合のいずれも DOM の紙面（20 列）へ落ちることを確認 |
 | グロー用 SDF | `scripts/sdf.ts`。8SSEDT で 64×64 / 字の 8bit アトラス（1024×512、約 0.5MB）。発光の縁が字形をなぞるのはこれによる |
 | 円相 | `Y` 反転・非正方形 viewBox・断片パス約 40 本を含めて取り込み済み |
 | コンテンツ | 21 ノードの YAML + 21 本の解説 Markdown。zod スキーマ + 静的検証。原稿は深度ごとに役割を分ける（→ `doc-writing`） |
