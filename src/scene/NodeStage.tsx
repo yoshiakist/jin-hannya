@@ -130,7 +130,7 @@ function Headline({ node }: { node: GraphNode }) {
 /**
  * 大書の中の入口 1 つぶんの当たり判定。
  * 字の上へ透明な板を置くだけで、光らせるのは `Headline` 側の `focused`。
- * `visible={false}` だとレイキャストの対象から外れるため、透明にして残す。
+ * 見せずに当てたいので、`visible={false}` で消すのではなく透明マテリアルで置く。
  */
 function HeadlineGate({
   id,
@@ -326,7 +326,7 @@ function ChildNode({ item, order }: { item: DiagramItem; order: number }) {
         )
       })}
       {/* 当たり判定。字の隙間で hover が切れないように矩形で覆う。
-          visible={false} だとレイキャストされないため、透明にして残す。
+          見せずに当てるので、消すのではなく透明で置く。
           字数が効くのは**字の並ぶ軸だけ**（枠の中は横組み・図の中は縦組み）。
           両軸に効かせると縦連結で上下の隣まで覆い、手前の枠が hover を奪う */}
       <mesh position={[0, 0, 0.1]}>

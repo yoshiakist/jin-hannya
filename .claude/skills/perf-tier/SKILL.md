@@ -82,5 +82,5 @@ Tier 3 は 2 レイヤー構成の帰結として「WebGPU レイヤーを外す
 | ティアが実態と合わない | `navigator.gpu` の有無だけで判定していた。`init()` 後に実バックエンドを見て訂正する |
 | hover 発光が効かない | `instanceColor` は `WebGPURenderer` のノードマテリアル経路で効かない。インスタンス属性 + TSL で書く（→ `ink-visuals`） |
 | 粒子が 1px に潰れて見えない | `PointsNodeMaterial` の `sizeNode` は `Points` に対して読まれない。`Sprite` のインスタンシングへ（→ `transition-fx`） |
-| レイキャストに当たらない | 当たり判定用オブジェクトを `visible={false}` にしていた。透明マテリアルで置く |
+| 見えない板に当たる（別の深度のクリックを奪う） | `visible={false}` はレイキャストを止めない（three の `Raycaster` は `visible` を見ない）。判定ごと止めるならツリーから外す（→ `paper-grid`） |
 | 遷移が固まったり固まらなかったり | マテリアルを作り直している。TSL の吐くソースが毎回変わりプログラムキャッシュに当たらない（→ `transition-fx`） |

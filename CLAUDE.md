@@ -96,7 +96,7 @@ assets/     svg/(筆文字127) pattern/circle.svg bgm/ sfx/ voice/(未収録)
 - **`public/glyphs/*.bin` はハッシュ付きの名前で出し、索引の `files` から引く。** 索引はハッシュ付き JS に焼かれるので、bin が固定名だと字を 1 つ足して出し直した瞬間、古い bin をキャッシュに持つ再訪問者が「新しいオフセット表 × 古い bin」で落ちる。読み込みの失敗（取れない・長さが索引と違う・レンダラが立たない・描画中の例外）は必ず拾って DOM の紙面へ落とす（`stageFailedAtom` / `scene/StageBoundary.tsx`）。拾わないと真っ黒の画面のまま何も起きない。
 - `navigator.gpu` があってもアダプタが無い環境がある。**`renderer.init()` 後に実バックエンドを見てティアを訂正する**。
 - hover 発光に `instanceColor` は使わない（`WebGPURenderer` のノードマテリアル経路で効かない）。インスタンス属性 + TSL で書く。
-- 当たり判定用オブジェクトを `visible={false}` にしない（レイキャスト対象から外れる）。透明マテリアルで置く。
+- 当たり判定用オブジェクトは透明マテリアルで置く。`visible={false}` で伏せても**レイキャストからは外れない**（three の `Raycaster` は `visible` を見ない）。判定ごと止めたいときはツリーから外す。
 - ドラッグの `setPointerCapture` は `pointerdown` 即時ではなく **6px 動いてから**（即時だとクリックが成立しない）。
 - 紙面の可動域は**ビューポート依存**。縦長スマホでは必ず左へはみ出し、16:9 PC では収まる。定数化せずリサイズごとに実測する。
 - `router.push` は**非同期**で、`usePathname` への反映まで数フレームの窓がある。push したパスを控えずに pathname とだけ突き合わせると、窓の間の再実行で外部遷移と誤認して逆再生が起きる（`useRouteSync` の `pushing` ref。→ skill: `navigation-fsm`）。

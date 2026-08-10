@@ -382,19 +382,23 @@ function HoverPlane({ indexToNode, live }: { indexToNode: readonly (string | nul
     if (id) dispatch({ type: 'enter', id })
   }
 
+  // 潜っているあいだは板ごと外す。`visible={false}` では**レイキャストから外れない**ので
+  // （three の Raycaster は visible を見ない）、L1 以降の黒い余白のクリックが
+  // 裏に残った L0 の升を叩き、無関係なノードへ飛ぶ。
+  // 板は planeGeometry + meshBasicMaterial の 1 枚きりで、TSL のマテリアルを持つ
+  // 字や滲みとは違い、組み直しの代償が無い（→ CLAUDE.md「面の用意をやり直さない」）。
+  if (!live) return null
+
   return (
     <mesh
       // 紙面はワールド固定。パンはカメラ側で行うのでここは動かさない
       position={[-((columns - 1) * CELL_X) / 2, 0, -0.5]}
-      // 潜っているあいだは伏せる。ここだけは visible={false} でよい
-      // （レイキャストから外れるのが目的。L1 以降で紙面の hover を拾わせない）
-      visible={live}
       onPointerMove={onPointerMove}
       onPointerOut={() => dispatch({ type: 'hover', id: null })}
       onClick={onClick}
     >
       <planeGeometry args={[width, height]} />
-      {/* visible={false} にするとレイキャストの対象から外れるので、透明にして残す */}
+      {/* 見せずに当てるので、消すのではなく透明で置く */}
       <meshBasicMaterial transparent opacity={0} depthWrite={false} />
     </mesh>
   )
