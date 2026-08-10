@@ -11,6 +11,8 @@ children:
   - kanjizai-to-issaikuyaku
   - shariji-to-yakubunyoze
   - shariji-to-fuzofugen
-  - zekokuchu-to-komisokuho
+  - zekokuchu-to-muishikikai
+  - mumumyo-to-kujumetsudo
+  - muchiyaku-to-mushotokuko
 layout: none
 range: [0, 276]
