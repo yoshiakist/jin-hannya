@@ -62,10 +62,22 @@ export function AudioConsent() {
         <div className="consent" role="group" aria-label="音の断り">
           <p className="consent__note">本サイトはBGMが流れます</p>
           <div className="consent__actions">
-            <button type="button" className="pill pill--large" onClick={() => answer('accepted')} autoFocus>
+            {/* 二字は見た目の対称のため。ボタン単体で読み上げられたとき、どちらが鳴る側か分かるよう名前を足す */}
+            <button
+              type="button"
+              className="pill pill--large"
+              aria-label="BGMを鳴らして始める"
+              onClick={() => answer('accepted')}
+              autoFocus
+            >
               承知
             </button>
-            <button type="button" className="pill pill--large" onClick={() => answer('silent')}>
+            <button
+              type="button"
+              className="pill pill--large"
+              aria-label="音を鳴らさずに始める"
+              onClick={() => answer('silent')}
+            >
               静寂
             </button>
           </div>
