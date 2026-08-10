@@ -24,7 +24,7 @@ import { glyphParticles } from './glyphs.ts'
 // 尺は Transition.tsx が 1 か所で持つ（README「時間の設計」）。遅れを進行度 τ に直すのに要る
 import { TRANSITION_MS } from './Transition.tsx'
 import { FOCUS_GLOW, INK } from './materials.ts'
-import { tierAtom, particleScaleAtom } from '../nav/atoms.ts'
+import { tierAtom, particleScaleAtom, particlesReadyAtom } from '../nav/atoms.ts'
 import { PARTICLE_BUDGET } from './tier.ts'
 import { VIEW_HEIGHT } from '../world/paper.ts'
 
@@ -161,6 +161,9 @@ export function TransitionParticles({
 }) {
   const tier = useAtomValue(tierAtom)
   const scale = useAtomValue(particleScaleAtom)
+  // bin は起動を止めずに後ろで取っている。届くまでの遷移は粒子抜きで走り、
+  // 届いた時点から出る（`glyphParticles` が null を返すあいだは字を飛ばすだけ）
+  const particlesReady = useAtomValue(particlesReadyAtom)
 
   // 紙面全体が散るときは字数が 3 桁になる。総数で頭を押さえてから 1 字あたりへ割り戻す
   const perGlyph = Math.max(
@@ -303,7 +306,7 @@ export function TransitionParticles({
     )
 
     return { material, count: home.length / 3, progressUniform, zoomUniform, tailUniform }
-  }, [sources, mode, perGlyph])
+  }, [sources, mode, perGlyph, particlesReady])
 
   // 遷移ごとに作り直すので、前のぶんを捨てる
   useEffect(() => () => built?.material.dispose(), [built])

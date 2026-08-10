@@ -142,6 +142,12 @@ export const tierAtom = atom<Tier>(TIER)
 export const particleScaleAtom = atom(1)
 
 /**
+ * 粒子の bin（ティアごとに別ファイル）が届いたか。
+ * 起動を止めずに後ろで取るので、届くまでの遷移は粒子抜きで走る（→ `scene/glyphs.ts`）。
+ */
+export const particlesReadyAtom = atom(false)
+
+/**
  * WebGPU レイヤーが立たなかった（グリフの bin が取れない・レンダラの初期化に失敗した・
  * 描画中に落ちた）。**Tier 1/2 でも DOM の紙面へ落とすための旗**で、
  * ティアの判定とは別勘定にしてある（能力はあるのに個別の事情で立たない場合がある）。

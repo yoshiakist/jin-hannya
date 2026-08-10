@@ -6,11 +6,18 @@
  * 三角形分割も粒子サンプリングもここで済ませ、バイナリで同梱する。
  *
  * 出力
- *   public/glyphs/mesh.<hash>.bin      … 頂点座標(f32 xy) + インデックス(u32) を全字ぶん連結
- *   public/glyphs/particles.<hash>.bin … 粒子ホームポジション(f32 xy) を全字ぶん連結
- *   public/glyphs/sdf.<hash>.bin       … 符号付き距離場(u8) を 1 枚のアトラスに敷き詰めたもの
- *   public/glyphs/order.<hash>.bin     … 筆順パラメータ場(u8)。`<字>_path.svg` がある字だけ
- *   src/generated/glyphs.json          … 上記へのオフセット表（`files` に実ファイル名と寸法）
+ *   public/glyphs/mesh.<hash>.bin       … 頂点座標(f32 xy) + インデックス(u16) を全字ぶん連結
+ *   public/glyphs/particles-lo.<hash>.bin … 粒子ホームポジション(u16 xy)。Tier 2 に配るぶんだけ
+ *   public/glyphs/particles-hi.<hash>.bin … 同・Tier 1 の全量
+ *   public/glyphs/sdf.<hash>.bin        … 符号付き距離場(u8) を 1 枚のアトラスに敷き詰めたもの
+ *   public/glyphs/order.<hash>.bin      … 筆順パラメータ場(u8)。`<字>_path.svg` がある字だけ
+ *   src/generated/glyphs.json           … 上記へのオフセット表（`files` に実ファイル名と寸法）
+ *
+ * **粒子はティアで別のファイルに分ける。** Tier 2 は 1 字 400 点しか使わないのに全量（4,000 点）を
+ * 受け取ると、必要量の 10 倍を待たされる。サンプルは面積重みで一様に取ってあるので、
+ * 先頭から切るだけで分布は保たれる（→ `LOW_RATIO`）。
+ * 座標は u16 に量子化する。f32 の座標列は圧縮がほとんど効かない（brotli で 4.1MB → 3.8MB）ので、
+ * 転送量を半分にするには表現そのものを詰めるしかない。
  *
  * **bin の名前には中身のハッシュを入れる。** オフセット表はハッシュ付きの JS へ焼かれるので、
  * bin が固定名だと「新しいオフセット表 × キャッシュに残った古い bin」の組が成立してしまい、
@@ -49,6 +56,11 @@ function emit(name: string, data: Buffer): { name: string; bytes: number } {
 const PARTICLES_PER_GLYPH = 4000
 /** 円相は面積が大きいので多めに配る */
 const PARTICLES_FOR_CIRCLE = 20000
+/**
+ * Tier 2 へ配るぶんの割合（`PARTICLE_BUDGET[2] / PARTICLE_BUDGET[1]` の写し）。
+ * 先頭から切るので、字ごとの分布はそのまま薄くなる。
+ */
+const LOW_RATIO = 0.1
 
 /** SDF アトラスの列数。行数は字数から決まる */
 const SDF_COLUMNS = 16
@@ -167,6 +179,17 @@ function sampleTriangles(positions: Float32Array, indices: Uint32Array, count: n
 }
 
 /**
+ * 字面ローカル座標（[-0.5, 0.5]）を u16 へ量子化して buffer へ書く。
+ * 刻みは字面の一辺の 1/65535 で、どの拡大率でも 1px にはるかに満たない。
+ */
+function writeQuantized(target: Buffer, at: number, xy: Float32Array, count: number): void {
+  for (let i = 0; i < count * 2; i++) {
+    const v = Math.min(1, Math.max(0, xy[i]! + 0.5))
+    target.writeUInt16LE(Math.round(v * 65535), at + i * 2)
+  }
+}
+
+/**
  * SVG のユーザ座標 → 字面ローカル座標（[-0.5, 0.5]^2、Y 上向き）への写像。
  * 塗りのグリフと筆順の中心線は同じ viewBox なので、同じ写像を通せば重なる。
  */
@@ -281,10 +304,23 @@ function main(): void {
   }
 
   // --- バイナリへ連結 ---
-  const meshBytes = built.reduce((n, g) => n + g.positions.byteLength + g.indices.byteLength, 0)
-  const particleBytes = built.reduce((n, g) => n + g.particles.byteLength, 0)
+  // インデックスは u16。1 字あたりの頂点は多くて数千で、u32 で持つと mesh の 6 割が
+  // 上位ゼロで埋まる。字ごとに 0 から振り直しているので、上限は字の頂点数
+  const tooManyVertices = built.filter((g) => g.positions.length / 2 > 65536)
+  if (tooManyVertices.length > 0) {
+    console.error(`頂点が u16 に収まらない字がある: ${tooManyVertices.map((g) => g.key).join(', ')}`)
+    process.exit(1)
+  }
+  /** f32 の頂点座標が 4 の倍数の位置から始まるよう、u16 の並びのあとを詰める */
+  const align4 = (n: number) => (n + 3) & ~3
+
+  const meshBytes = built.reduce((n, g) => n + g.positions.byteLength + align4(g.indices.length * 2), 0)
+  const lowCounts = built.map((g) => Math.max(1, Math.round((g.particles.length / 2) * LOW_RATIO)))
+  const particleBytes = built.reduce((n, g) => n + g.particles.length * 2, 0)
+  const particleLowBytes = lowCounts.reduce((n, c) => n + c * 4, 0)
   const mesh = Buffer.alloc(meshBytes)
   const particles = Buffer.alloc(particleBytes)
+  const particlesLow = Buffer.alloc(particleLowBytes)
 
   // SDF は 1 枚のアトラスへ。字ごとにテクスチャを持つと描画呼び出しごとに束ね直すことになる
   const sdfRows = Math.ceil(built.length / SDF_COLUMNS)
@@ -320,15 +356,20 @@ function main(): void {
     }
   })
 
+  let particleLowOffset = 0
   for (const [cell, g] of built.entries()) {
     const positionOffset = meshOffset
     Buffer.from(g.positions.buffer, g.positions.byteOffset, g.positions.byteLength).copy(mesh, meshOffset)
     meshOffset += g.positions.byteLength
     const indexOffset = meshOffset
-    Buffer.from(g.indices.buffer, g.indices.byteOffset, g.indices.byteLength).copy(mesh, meshOffset)
-    meshOffset += g.indices.byteLength
+    for (const [i, value] of g.indices.entries()) mesh.writeUInt16LE(value, indexOffset + i * 2)
+    meshOffset += align4(g.indices.length * 2)
 
-    Buffer.from(g.particles.buffer, g.particles.byteOffset, g.particles.byteLength).copy(particles, particleOffset)
+    const count = g.particles.length / 2
+    const lowCount = lowCounts[cell]!
+    writeQuantized(particles, particleOffset, g.particles, count)
+    // 少ないほうは多いほうの**先頭**。分布が保たれるので、切る位置を選ぶ必要はない
+    writeQuantized(particlesLow, particleLowOffset, g.particles, lowCount)
 
     index[g.key] = {
       positionOffset,
@@ -336,14 +377,17 @@ function main(): void {
       indexOffset,
       indexCount: g.indices.length,
       particleOffset,
-      particleCount: g.particles.length / 2,
+      particleCount: count,
+      particleLowOffset,
+      particleLowCount: lowCount,
       sdfCell: cell,
       // 筆順を持たない字は -1。シェーダ側はこれを見て運びの判定を素通りさせる
       orderCell: orderCells.get(g.key) ?? -1,
       // 画ごとの [起筆, 終筆] を平らに並べたもの。持たない字は空
       strokeSpans: (g.order?.spans ?? []).flat().map((t) => Number(t.toFixed(5))),
     }
-    particleOffset += g.particles.byteLength
+    particleOffset += count * 4
+    particleLowOffset += lowCount * 4
   }
 
   mkdirSync(OUT_BIN, { recursive: true })
@@ -354,7 +398,8 @@ function main(): void {
   }
   const files = {
     mesh: emit('mesh', mesh),
-    particles: emit('particles', particles),
+    particlesLow: emit('particles-lo', particlesLow),
+    particlesHigh: emit('particles-hi', particles),
     sdf: emit('sdf', sdf),
     order: emit('order', order),
   }
@@ -389,7 +434,8 @@ function main(): void {
   const totalParticles = built.reduce((n, g) => n + g.particles.length / 2, 0)
   console.log(
     `glyphs: ${built.length} 件 / mesh ${(meshBytes / 1e6).toFixed(2)}MB / ` +
-      `particles ${(particleBytes / 1e6).toFixed(2)}MB (${totalParticles.toLocaleString()} 点) / ` +
+      `particles hi ${(particleBytes / 1e6).toFixed(2)}MB (${totalParticles.toLocaleString()} 点) ` +
+      `lo ${(particleLowBytes / 1e6).toFixed(2)}MB (${lowCounts.reduce((a, b) => a + b, 0).toLocaleString()} 点) / ` +
       `sdf ${(sdf.byteLength / 1e6).toFixed(2)}MB (${sdfWidth}x${sdfHeight}) / ` +
       `order ${ordered.length} 字 (${ordered.map((g) => g.key).join('')})`,
   )

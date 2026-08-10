@@ -32,6 +32,7 @@
 | YAML / Markdown | `scripts/build-content.ts` がビルド時に 1 本の JSON（`src/generated/content.json`）へ束ね、あわせて `assets/`（筆文字 SVG・音源）を `public/` へコピーする。ランタイムに YAML パーサを載せない |
 | グリフ前計算 | `scripts/build-glyphs.ts`。SVG パース → 平坦化 → 穴の判定 → 三角形分割 → 面積重み付きサンプリングまで自前（依存は three の `ShapeUtils` のみ）。127 字 + 円相 = 128 件 |
 | 筆順の前計算 | `scripts/stroke-order.ts`。`<字>_path.svg`（筆順どおりに並んだ中心線）から 192×192 / 字の 8bit アトラス（`order.bin`）を焼く。各画素に「何番目に書かれるか」が 0〜1 で入る。用意があるのはロゴの 3 字だけ |
+| bin の分け方と読み込む順 | 起動を止めるのは最初の一画面に要るぶん（`mesh` 4.33MB / `sdf` 0.52MB / `order` 0.15MB）だけ。粒子は最初の遷移まで要らないので、レンダラが立ってティアが訂正されたあとにロゴの裏で取る（`loadParticles` / `scene/Stage.tsx` の `ParticleLoader`）。届く前の遷移は粒子抜きで走る。粒子はティアで別ファイルにし、Tier 2 は 1 字 400 点ぶん（`particles-lo` 0.21MB）、Tier 1 は全量（`particles-hi` 2.11MB）を取る。サンプルは面積重みで一様なので、先頭から切るだけで分布は保たれる。座標は u16、メッシュのインデックスも u16（f32・u32 の座標列は brotli がほとんど効かないので、表現そのものを詰める）。1440x810 の headless（Tier 2）で、起動時に取るのが mesh/sdf/order の 3 本だけ・`particles-lo` がそのあとに来ることを確認 |
 | bin の名前と読み込みの失敗 | `public/glyphs/*.bin` は `mesh.<中身のハッシュ>.bin` で出し、ランタイムは索引（ハッシュ付き JS に焼かれる）の `files` に書かれた名前だけを取りに行く。固定名だと「新しい索引 × キャッシュの古い bin」が成立し、字を 1 つ足した先で再訪問者だけが範囲外アクセスで落ちる。長さも索引で照合する。取れない・食い違う・レンダラが立たない・描画中に落ちた場合は、Tier 1/2 でも DOM の紙面へ落とす（`stageFailedAtom` / `scene/StageBoundary.tsx`）。1440x810 の headless で、bin を消した場合・途中で切った場合のいずれも DOM の紙面（20 列）へ落ちることを確認 |
 | グロー用 SDF | `scripts/sdf.ts`。8SSEDT で 64×64 / 字の 8bit アトラス（1024×512、約 0.5MB）。発光の縁が字形をなぞるのはこれによる |
 | 円相 | `Y` 反転・非正方形 viewBox・断片パス約 40 本を含めて取り込み済み |

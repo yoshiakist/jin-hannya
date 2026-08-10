@@ -14,7 +14,7 @@ import { Paper } from './Paper.tsx'
 import { NodeStage } from './NodeStage.tsx'
 import { nodePanX } from '../world/node-layout.ts'
 import { Transition, StageFade, TRANSITION_MS, ease } from './Transition.tsx'
-import { loadGlyphs } from './glyphs.ts'
+import { loadGlyphs, loadParticles } from './glyphs.ts'
 import { cappedDpr, measureFrameBudget } from './tier.ts'
 import { VIEW_HEIGHT } from '../world/paper.ts'
 import {
@@ -27,7 +27,14 @@ import {
   halfWidthFor,
   INITIAL_PAN_X,
 } from '../world/pan.ts'
-import { failStageAtom, navAtom, particleScaleAtom, splashAtom, tierAtom } from '../nav/atoms.ts'
+import {
+  failStageAtom,
+  navAtom,
+  particleScaleAtom,
+  particlesReadyAtom,
+  splashAtom,
+  tierAtom,
+} from '../nav/atoms.ts'
 import { Splash } from './Splash.tsx'
 import { nodeById, root } from '../content/loader.ts'
 
@@ -163,6 +170,30 @@ function FrameBudget() {
   return null
 }
 
+/**
+ * 粒子の bin を**ロゴの裏で**取る。ティアで量が 1 桁違うので、レンダラが立って
+ * ティアが訂正されたあと（＝この層がマウントされたあと）に取りに行く。
+ * 起動を止めないぶん、最初の遷移までに間に合わなければその回は粒子が出ない。
+ */
+function ParticleLoader() {
+  const tier = useAtomValue(tierAtom)
+  const setReady = useSetAtom(particlesReadyAtom)
+  useEffect(() => {
+    let disposed = false
+    loadParticles(tier).then(
+      () => {
+        if (!disposed) setReady(true)
+      },
+      // 粒子が無くても紙面も遷移も成立する。ここで落とさない
+      (error: unknown) => console.error(error),
+    )
+    return () => {
+      disposed = true
+    }
+  }, [tier, setReady])
+  return null
+}
+
 function SceneContent() {
   const nav = useAtomValue(navAtom)
   const splash = useAtomValue(splashAtom)
@@ -177,6 +208,7 @@ function SceneContent() {
     <>
       <CameraRig />
       <FrameBudget />
+      <ParticleLoader />
       {/* ロゴを書いているあいだも紙面は出したまま（`paperOpacity` で伏せる）。
           ここで描画から外すと 90 字ぶんのプログラムの用意がロゴの明け際に来て、
           いちばん見せたい入れ替わりで固まる（→ Paper.tsx / Splash.tsx） */}

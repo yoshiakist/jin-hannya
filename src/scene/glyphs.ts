@@ -23,6 +23,9 @@ interface GlyphEntry {
   indexCount: number
   particleOffset: number
   particleCount: number
+  /** Tier 2 用に間引いたぶんの位置と数（`particles-lo` の中でのバイト位置） */
+  particleLowOffset: number
+  particleLowCount: number
   /** SDF アトラス上のセル番号 */
   sdfCell: number
   /** 筆順アトラス上のセル番号。中心線（`<字>_path.svg`）を持たない字は -1 */
@@ -61,16 +64,22 @@ export const ORDER = glyphIndex.order as {
  * bin の実ファイル名と長さ。名前には中身のハッシュが入っている（→ scripts/build-glyphs.ts）。
  * この索引はハッシュ付きの JS に焼かれるので、bin 側も名前が変われば古い版と混ざりようがない。
  */
-const FILES = glyphIndex.files as Record<'mesh' | 'particles' | 'sdf' | 'order', { name: string; bytes: number }>
+const FILES = glyphIndex.files as Record<
+  'mesh' | 'particlesLow' | 'particlesHigh' | 'sdf' | 'order',
+  { name: string; bytes: number }
+>
 
 /** 円相（assets/pattern/circle.svg）はグリフと同じ経路で載せる。字ではないので別キー */
 export const CIRCLE_KEY = '@circle'
 
 let meshBuffer: ArrayBuffer | null = null
 let particleBuffer: ArrayBuffer | null = null
+/** 取った粒子がどちらのファイルか。字ごとのオフセットが別なので取り違えられない */
+let particleQuality: 'low' | 'high' | null = null
 let sdfBuffer: ArrayBuffer | null = null
 let orderBuffer: ArrayBuffer | null = null
 let loading: Promise<void> | null = null
+let loadingParticles: Promise<void> | null = null
 
 /**
  * bin を 1 本取る。取れなかった場合・索引と長さが食い違う場合は投げる。
@@ -88,6 +97,10 @@ async function fetchBin(file: { name: string; bytes: number }): Promise<ArrayBuf
 }
 
 /**
+ * **起動を止めるのは最初の一画面に要るものだけ**にする。ここが解決するまで Canvas ごと
+ * マウントされないので、待たせたぶんそのまま黒い画面になる（いちばん見せたいロゴの手前で）。
+ * 粒子は最初の遷移まで要らないので `loadParticles` へ回す。
+ *
  * 失敗したら reject する。呼び手（Stage）はそれを拾って DOM の紙面へ落とすこと
  * （拾わないと ready が立たないまま真っ黒になる）。
  */
@@ -95,14 +108,12 @@ export function loadGlyphs(): Promise<void> {
   if (!loading) {
     loading = Promise.all([
       fetchBin(FILES.mesh),
-      fetchBin(FILES.particles),
       fetchBin(FILES.sdf),
       // 筆順は数字ぶんしか無い（空のこともある）。他と同じく起動時に 1 度だけ取る
       ORDER.count > 0 ? fetchBin(FILES.order) : Promise.resolve(null),
     ])
-      .then(([mesh, particles, sdf, order]) => {
+      .then(([mesh, sdf, order]) => {
         meshBuffer = mesh
-        particleBuffer = particles
         sdfBuffer = sdf
         orderBuffer = order
       })
@@ -113,6 +124,30 @@ export function loadGlyphs(): Promise<void> {
       })
   }
   return loading
+}
+
+/**
+ * 遷移の粒子を**あとから**取る。ティアが決まってから呼ぶこと（Tier 2 は 1 字 400 点しか使わず、
+ * 全量を渡しても捨てるだけなので、間引いた側だけ取る）。
+ *
+ * 着く前に遷移が起きても演出は崩れない（`glyphParticles` が null を返し、その回だけ粒子が出ない）。
+ * 起動を止めてまで待つ価値は無いので、失敗しても紙面は落とさず黙って粒子無しで進む。
+ */
+export function loadParticles(tier: 1 | 2 | 3): Promise<void> {
+  if (tier === 3) return Promise.resolve()
+  if (!loadingParticles) {
+    const quality = tier === 1 ? 'high' : 'low'
+    loadingParticles = fetchBin(quality === 'high' ? FILES.particlesHigh : FILES.particlesLow)
+      .then((buffer) => {
+        particleBuffer = buffer
+        particleQuality = quality
+      })
+      .catch((error: unknown) => {
+        loadingParticles = null
+        throw error
+      })
+  }
+  return loadingParticles
 }
 
 export function hasGlyph(char: string): boolean {
@@ -156,7 +191,8 @@ export function glyphGeometry(char: string): BufferGeometry | null {
 
   const geometry = new BufferGeometry()
   geometry.setAttribute('position', new BufferAttribute(positions, 3))
-  geometry.setIndex(new BufferAttribute(new Uint32Array(meshBuffer, entry.indexOffset, entry.indexCount), 1))
+  // インデックスは字ごとに 0 から振り直してあるので u16 に収まる（ビルド時に確かめている）
+  geometry.setIndex(new BufferAttribute(new Uint16Array(meshBuffer, entry.indexOffset, entry.indexCount), 1))
   geometry.computeBoundingSphere()
 
   geometryCache.set(char, geometry)
@@ -245,11 +281,18 @@ export function strokeSpansOf(char: string): [number, number][] | null {
 /**
  * 粒子のホームポジション。`count` を指定すると先頭から間引いて返す。
  * サンプルは面積重みで一様に取られているので、先頭から切っても分布は保たれる。
+ *
+ * bin が届く前は `null`。呼び手（`Particles.tsx`）はその字を飛ばすだけでよい。
+ * 中身は u16 なので、ここで字面ローカル座標へ戻す。
  */
 export function glyphParticles(char: string, count?: number): Float32Array | null {
   const entry = entryOf(char)
   if (!entry || !particleBuffer) return null
-  const available = entry.particleCount
+  const high = particleQuality === 'high'
+  const available = high ? entry.particleCount : entry.particleLowCount
   const wanted = count === undefined ? available : Math.max(1, Math.min(available, count))
-  return new Float32Array(particleBuffer, entry.particleOffset, wanted * 2)
+  const raw = new Uint16Array(particleBuffer, high ? entry.particleOffset : entry.particleLowOffset, wanted * 2)
+  const out = new Float32Array(wanted * 2)
+  for (let i = 0; i < out.length; i++) out[i] = raw[i]! / 65535 - 0.5
+  return out
 }
