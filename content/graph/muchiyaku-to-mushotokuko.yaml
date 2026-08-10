@@ -2,8 +2,7 @@ id: muchiyaku-to-mushotokuko
 kind: phrase
 label: 無智亦無得 / 以無所得故
 reading: む ち やく む とく / い むしょとく こ
-summary: 知ることも無く、得ることも無い。得るものが何も無いからこそ。
+summary: 知ることも無く、得ることも無い。そもそも得られるものなどなにも無いと知ればこそ。
 parent: shingyo
 layout: none
 range: [139, 149]
-ai_generated: true
