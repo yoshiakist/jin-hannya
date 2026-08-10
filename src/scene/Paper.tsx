@@ -32,6 +32,7 @@ import {
   revealTime,
   revealMask,
   revealProgress,
+  REVEAL_DURATION,
   REVEAL_SPREAD,
   REVEAL_TOTAL,
 } from './materials.ts'
@@ -71,6 +72,16 @@ const dim = uniform(0)
 function revealDelayOf(index: number): number {
   const last = SUTRA_CHARS.length - 1
   return last <= 0 ? 0 : (index / last) * REVEAL_SPREAD
+}
+
+/**
+ * その字がもう現れ切ったか。滲み出しの最中は墨がまだ薄く、
+ * 見えていない字を押せてしまうと、押した覚えのない語へ潜ることになる。
+ * 時計（`revealTime`）はロゴを書いているあいだ止まっているので、
+ * ロゴが引くまで紙面ぜんたいが触れないことにもなる。
+ */
+function isRevealed(index: number): boolean {
+  return (revealTime.value as number) >= revealDelayOf(index) + REVEAL_DURATION
 }
 
 /** 初出の滲み出しを済ませたか。紙面は畳まないので、モジュールに 1 つ置けば足りる */
@@ -351,16 +362,21 @@ function HoverPlane({ indexToNode, live }: { indexToNode: readonly (string | nul
   const indexUnder = (x: number, y: number): number | null =>
     indexAt(Math.round(-x / CELL_X), Math.round((COLS_PER_LINE - 1) / 2 - y / CELL_Y))
 
+  /** まだ現れていない字は、升が空いているのと同じ扱いにする */
+  const nodeUnder = (event: ThreeEvent<PointerEvent | MouseEvent>): string | null => {
+    const index = indexUnder(event.point.x, event.point.y)
+    if (index === null || !isRevealed(index)) return null
+    return indexToNode[index] ?? null
+  }
+
   const onPointerMove = (event: ThreeEvent<PointerEvent>) => {
     if (!accepts) return
-    const index = indexUnder(event.point.x, event.point.y)
-    dispatch({ type: 'hover', id: index === null ? null : (indexToNode[index] ?? null) })
+    dispatch({ type: 'hover', id: nodeUnder(event) })
   }
 
   const onClick = (event: ThreeEvent<MouseEvent>) => {
     if (!accepts || isGestureClick()) return
-    const index = indexUnder(event.point.x, event.point.y)
-    const id = index === null ? null : indexToNode[index]
+    const id = nodeUnder(event)
     if (id) dispatch({ type: 'enter', id })
   }
 
