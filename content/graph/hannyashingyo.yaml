@@ -1,0 +1,8 @@
+id: hannyashingyo
+kind: phrase
+label: 般若心経
+reading: はんにゃしんぎょう
+summary: 経の終わりに、もう一度置かれた題。渡りきる智慧の、いちばん芯だけを取り出した経。
+parent: shingyo
+layout: none
+range: [272, 276]
