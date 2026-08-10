@@ -1,0 +1,13 @@
+id: zekokuchu-to-komisokuho
+kind: phrase
+label: 是故空中 / 無色無受想行識 / 無眼耳鼻舌身意 / 無色聲香味触法
+reading: ぜこ くうちゅう むしき むじゅそうぎょうしき / むげんにびぜっしんに / むしきしょうこうみそくほう
+summary: それ故に空においては、人の心理作用も無い。身体の感覚器官や意識も無く、感覚の対象もまた無い。
+parent: shingyo
+children:
+  - zeko-kuchu
+  - mushiki-mujusogyoshiki
+  - mu-genni-bizesshin-i
+  - mu-shikisho-komisokuho
+layout: none
+range: [82, 107]
