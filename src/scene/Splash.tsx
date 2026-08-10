@@ -10,22 +10,27 @@
  *
  * 幕は張らない。紙面は描いたまま濃さだけ 0 に伏せてあり（Paper.tsx が `paperOpacity` を落とす）、
  * ロゴが薄れ始めるのと入れ替わりに経文が滲み出す。
+ *
+ * 書き上がったところで一旦止まり、音の断り（overlay/AudioConsent.tsx）に答えが出るまで待つ。
+ * 薄れ始めるのはそのあと。答えを待つあいだもロゴは出したままにする（→ `splashAtom` の 'asking'）。
  */
 
 import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
-import { useSetAtom } from 'jotai'
+import { useAtomValue, useSetAtom } from 'jotai'
 import { PlaneGeometry, type Group, type OrthographicCamera } from 'three'
 import { float, uniform } from 'three/tsl'
 import { glyphGeometry, orderCellOf, sdfCellOf, strokeSpansOf } from './glyphs.ts'
 import {
   GLOW_PLANE,
+  approach,
   brushTip,
   createBrushMaterial,
   createGlowMaterial,
   planeCellLocal,
 } from './materials.ts'
-import { splashAtom, type SplashPhase } from '../nav/atoms.ts'
+import { ease } from '../world/ease.ts'
+import { audioConsentAtom, splashAtom, type SplashPhase } from '../nav/atoms.ts'
 
 /** 縦に書く 3 字。上から順に運ぶ */
 const CHARS = ['深', '般', '若'] as const
@@ -38,7 +43,7 @@ const STROKE_GAP_MS = 50
 const MIN_WRITE_RATIO = 0.5
 /** 字と字のあいだ、筆を継ぐ間（ミリ秒） */
 const CHAR_GAP_MS = 400
-/** 書き上がってから薄れ始めるまで（ミリ秒） */
+/** 書き上がってから音の断りを出すまで（ミリ秒）。筆を置いた余韻 */
 const HOLD_MS = 520
 /** 薄れ切るまで（ミリ秒）。このあいだに経文が滲み出してくる */
 const FADE_MS = 900
@@ -53,6 +58,10 @@ const MAX_WIDTH = 0.42
 const GLOW_STRENGTH = 0.55
 /** ロゴを置く奥行き。紙面（z ≒ 0）より手前 */
 const SPLASH_Z = 5
+/** 音の断りを出すとき、ロゴを持ち上げる高さ（見えている高さに対する比）。字と断りを重ねない */
+const ASK_LIFT = 0.08
+/** 持ち上がるまで（秒）。筆を置いてから断りが浮かぶのと同じ間合いで動かす */
+const ASK_LIFT_SEC = 0.7
 
 /**
  * 1 字ぶんの運びの尺。画の区間（`spans`）ごとに使う時間を長さで按分し、
@@ -100,6 +109,8 @@ function progressAt(timeline: Timeline, elapsed: number): number {
 
 export function Splash() {
   const setPhase = useSetAtom(splashAtom)
+  /** 音の断りへの答え。出るまでロゴは薄れない */
+  const consent = useAtomValue(audioConsentAtom)
   const groupRef = useRef<Group>(null)
   const camera = useThree((state) => state.camera) as OrthographicCamera
   const size = useThree((state) => state.size)
@@ -130,8 +141,8 @@ export function Splash() {
     })
   }, [fade])
 
-  /** 3 字を書き上げて間を置き、薄れ始める時刻（演出の始まりから、ミリ秒） */
-  const fadeAt = useMemo(() => {
+  /** 3 字を書き上げて間を置き、音の断りを出す時刻（演出の始まりから、ミリ秒） */
+  const askAt = useMemo(() => {
     const last = items[items.length - 1]!
     return last.start + last.timeline.duration + HOLD_MS
   }, [items])
@@ -155,11 +166,17 @@ export function Splash() {
   /** いま出している相。同じ値を毎フレーム書かないための控え */
   const phase = useRef<SplashPhase>('writing')
 
+  /** 答えが出た時刻（`performance.now()`）。ロゴはここから薄れる */
+  const answeredAt = useRef<number | null>(null)
+  useEffect(() => {
+    if (consent !== null && answeredAt.current === null) answeredAt.current = performance.now()
+  }, [consent])
+
   // 触れられたら書き上がりへ飛ばす。読み終えた人を毎回 4 秒待たせない
   useEffect(() => {
     const skip = () => {
       if (started.current === null || phase.current !== 'writing') return
-      started.current = performance.now() - fadeAt
+      started.current = performance.now() - askAt
     }
     window.addEventListener('pointerdown', skip)
     window.addEventListener('keydown', skip)
@@ -167,9 +184,12 @@ export function Splash() {
       window.removeEventListener('pointerdown', skip)
       window.removeEventListener('keydown', skip)
     }
-  }, [fadeAt])
+  }, [askAt])
 
-  useFrame(() => {
+  /** 持ち上がりの進み（0〜1）。緩急はこれを `ease` に通して掛ける */
+  const lift = useRef(0)
+
+  useFrame((_, delta) => {
     const now = performance.now()
     if (started.current === null) started.current = now
     const elapsed = now - started.current
@@ -179,10 +199,15 @@ export function Splash() {
     const viewWidth = size.width / camera.zoom
     const unit = Math.min(viewHeight, (viewWidth * MAX_WIDTH) / GLYPH)
 
+    // 断りが出たら、その紙幅を空けるぶんだけ上へ退く。薄れ切るまで戻さない。
+    // 緩急は深度をまたぐ動きと同じ曲線（`ease`）に揃える。等速で退くと筆の余韻が切れる
+    lift.current = approach(lift.current, elapsed >= askAt ? 1 : 0, delta, ASK_LIFT_SEC)
+    const lifted = ease(lift.current) * ASK_LIFT * unit
+
     const group = groupRef.current
     if (group) {
       // カメラに追従させて画面の中央に据える。紙面のパンに引きずられない
-      group.position.set(camera.position.x, camera.position.y, SPLASH_Z)
+      group.position.set(camera.position.x, camera.position.y + lifted, SPLASH_Z)
       group.scale.setScalar(unit)
     }
 
@@ -193,9 +218,12 @@ export function Splash() {
       item.brush.opacity.value = fade.value as number
     }
 
+    // 書き上がったら答えを待ち（'asking'）、答えが出たところから薄れる
+    const answered = answeredAt.current
+    const faded = answered === null ? 0 : (now - answered) / FADE_MS
     const next: SplashPhase =
-      elapsed >= fadeAt + FADE_MS ? 'done' : elapsed >= fadeAt ? 'fading' : 'writing'
-    fade.value = next === 'done' ? 0 : Math.max(0, Math.min(1, 1 - (elapsed - fadeAt) / FADE_MS))
+      elapsed < askAt ? 'writing' : answered === null ? 'asking' : faded >= 1 ? 'done' : 'fading'
+    fade.value = next === 'writing' || next === 'asking' ? 1 : Math.max(0, 1 - faded)
     if (next !== phase.current) {
       phase.current = next
       setPhase(next)

@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useAtomValue, useSetAtom } from 'jotai'
 import { Stage } from './scene/Stage.tsx'
 import { Overlay } from './overlay/Overlay.tsx'
+import { AudioConsent } from './overlay/AudioConsent.tsx'
 import { PaperFallback } from './overlay/PaperFallback.tsx'
 import { useRouteSync } from './nav/router.ts'
 import {
@@ -14,6 +15,7 @@ import {
   currentNodeAtom,
   markVisitedAtom,
   splashAtom,
+  audioConsentAtom,
 } from './nav/atoms.ts'
 import { usePanZoomGesture, useNodePanSpring, panXAtom, panBoundsAtom } from './world/pan.ts'
 import { VIEW_HEIGHT } from './world/paper.ts'
@@ -25,16 +27,22 @@ export function App() {
   const isRoot = useAtomValue(isRootAtom)
   const panX = useAtomValue(panXAtom)
   const bounds = useAtomValue(panBoundsAtom)
-  // ロゴを書いているあいだ、面は暗闇のまま（`splashing`）。薄れ始めた時点でオーバーレイは
-  // 経文と同じ時間をかけて現れるが、**紙面のクリックはロゴが畳まれるまで通さない**（`closed`）。
+  // ロゴを書いているあいだと、音の断りに答えを待つあいだ、面は暗闇のまま（`splashing`）。
+  // ロゴが薄れ始めた時点でオーバーレイは経文と同じ時間をかけて現れるが、
+  // **紙面のクリックはロゴが畳まれるまで通さない**（`closed`）。
   // 薄れかけのロゴ越しに潜られると、書き上げたばかりの字がそのまま散る（→ src/scene/Splash.tsx）
   const splash = useAtomValue(splashAtom)
-  const splashing = splash === 'writing'
+  /** 音の断りへの答え。null のあいだは音を一切起こさない */
+  const consent = useAtomValue(audioConsentAtom)
+  const muted = useAtomValue(mutedAtom)
+  const splashing = splash === 'writing' || splash === 'asking'
   const closed = splash !== 'done'
   const containerRef = useRef<HTMLDivElement>(null)
 
   useRouteSync()
-  useAutoStartAudio(containerRef)
+  // 音を起こすのは断りに答えが出てから。「静寂」で始めた読者には、
+  // 後からミュートを解いたときに初めて掛かる（それまで取得も始まらない）
+  useAutoStartAudio(containerRef, consent !== null && !muted)
   useWooshOnTransition(phase)
   useVisitLog()
 
@@ -58,15 +66,19 @@ export function App() {
     >
       {tier === 3 ? isRoot && <PaperFallback /> : <Stage />}
       <Overlay />
+      {/* 断りはオーバーレイの外。ロゴが出ているあいだ `.overlay` は伏せてある */}
+      <AudioConsent />
     </div>
   )
 }
 
 /**
- * 開いた時点で音を始める。自動再生が許されていない環境ではここで弾かれるので、
- * そのときだけ最初のクリック／タップ／キー入力を待って始め直す。
+ * 音を始める。`enabled` が立つのは音の断りに答えが出てから（→ overlay/AudioConsent.tsx）で、
+ * それまでは `AudioContext` も `<audio>` も作らない＝BGM の取得も始まらない。
+ * 自動再生が許されていない環境では最初の呼びで弾かれるので、
+ * そのときだけ次のクリック／タップ／キー入力を待って始め直す。
  */
-function useAutoStartAudio(target: React.RefObject<HTMLElement | null>): void {
+function useAutoStartAudio(target: React.RefObject<HTMLElement | null>, enabled: boolean): void {
   const setStarted = useSetAtom(audioStartedAtom)
   const volume = useAtomValue(bgmVolumeAtom)
   const muted = useAtomValue(mutedAtom)
@@ -75,7 +87,7 @@ function useAutoStartAudio(target: React.RefObject<HTMLElement | null>): void {
 
   useEffect(() => {
     const element = target.current
-    if (!element) return
+    if (!element || !enabled) return
     let disposed = false
 
     const attempt = async () => {
@@ -102,7 +114,7 @@ function useAutoStartAudio(target: React.RefObject<HTMLElement | null>): void {
       disposed = true
       detach()
     }
-  }, [target, setStarted])
+  }, [target, setStarted, enabled])
 }
 
 /**

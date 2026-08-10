@@ -515,7 +515,7 @@ body {
   background: transparent;
   color: var(--text);
   font-family: var(--sans);
-  font-size: 11px;
+  font-size: 14px;
   letter-spacing: 0.16em;
   cursor: pointer;
   transition:
@@ -533,6 +533,19 @@ body {
   padding: 6px 10px;
 }
 
+/* 大きい方。サイトの冒頭で最初に押させるものだけに使う（→ overlay/AudioConsent.tsx）。
+   指で外さない大きさ（44px 角）を下限に置く */
+.pill--large {
+  min-height: 44px;
+  min-width: 104px;
+  justify-content: center;
+  padding: 12px 30px;
+  font-size: 14px;
+  letter-spacing: 0.22em;
+  /* 字間ぶん右に寄って見えるので、最後の 1 字ぶんを戻す */
+  text-indent: 0.22em;
+}
+
 .audio-controls {
   display: flex;
   align-items: center;
@@ -542,6 +555,70 @@ body {
 .audio-controls input[type='range'] {
   width: 72px;
   accent-color: var(--focus);
+}
+
+/* --- 暗幕 ------------------------------------------------------------------ */
+
+/* ロゴを持たない入り方（潜った先を直接開いた・Tier 3・視差を抑える設定）では、
+   断りに答えるまで面ぜんたいを伏せる。ロゴのある入り方では紙面が既に伏せてあるので掛けない。
+   最初の描画から掛かっている必要があるので、現れる側の演出は持たない（畳むときだけ緩める） */
+.curtain {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: var(--bg);
+  background-image: var(--vignette);
+  opacity: 1;
+  /* 経文の滲み出し・オーバーレイの現れと同じ尺 */
+  transition: opacity 900ms ease;
+}
+
+.curtain--open {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* --- 音の断り -------------------------------------------------------------- */
+
+/* ロゴを書き上げた（あるいは飛ばした）ところで、字の下に小さく出す。
+   紙面は伏せたままなので、暗闇にこれだけが浮かぶ。**縦組みにはしない**
+   （経文ではなくこちらからの断り。オーバーレイの外なので既定の横組みのまま） */
+.consent {
+  position: absolute;
+  /* 暗幕（`.curtain`）より前。断りだけは幕の上に出す */
+  z-index: 2;
+  left: 50%;
+  bottom: clamp(28px, 9dvh, 84px);
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  writing-mode: horizontal-tb;
+  text-align: center;
+  /* ロゴの筆が止まってから、遅れて浮かび上がる */
+  animation: consent-in 900ms ease both;
+}
+
+.consent__note {
+  margin: 0;
+  font-size: 14px;
+  letter-spacing: 0.18em;
+  color: var(--text-dim);
+}
+
+.consent__actions {
+  display: flex;
+  gap: 12px;
+}
+
+@keyframes consent-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 /* --- 左矢印 ---------------------------------------------------------------- */

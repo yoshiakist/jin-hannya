@@ -17,6 +17,7 @@ import {
 } from '../content/loader.ts'
 import { initialNodeId } from './url.ts'
 import { loadVisited, saveVisited, completedIds } from './progress.ts'
+import { loadConsent, type AudioConsent } from '../audio/consent.ts'
 import { detectTier, type Tier } from '../scene/tier.ts'
 import type { GraphNode } from '../content/schema.ts'
 
@@ -145,10 +146,11 @@ export const particleScaleAtom = atom(1)
 /**
  * ロゴ（深般若）を書いている相。
  *   writing … 暗闇に筆を運んでいる。紙面は伏せたまま
+ *   asking  … 書き上がり、音の断り（`audioConsentAtom`）に答えを待っている。ロゴは出したまま
  *   fading  … ロゴが薄れ、入れ替わりに経文が滲み出す
  *   done    … ロゴは畳まれ、以後この面には戻らない
  */
-export type SplashPhase = 'writing' | 'fading' | 'done'
+export type SplashPhase = 'writing' | 'asking' | 'fading' | 'done'
 
 /**
  * ロゴを出すか。**根を直接開いたときの 1 回だけ**で、
@@ -164,13 +166,29 @@ function initialSplashPhase(): SplashPhase {
   return 'writing'
 }
 
-export const splashAtom = atom<SplashPhase>(initialSplashPhase())
+/** 相の初期値は 2 か所（ロゴ本体と、断りを聞き直すかの判断）で要る。数えるのは 1 度でよい */
+const INITIAL_SPLASH = initialSplashPhase()
+
+export const splashAtom = atom<SplashPhase>(INITIAL_SPLASH)
+
+/**
+ * 音の断りへの答え。**`null` のあいだは面を開けない**
+ * （経文は滲み出さず＝ src/scene/Paper.tsx、ロゴを持たない入り方では暗幕が掛かる）。
+ *
+ * 答えは localStorage に残す（→ src/audio/consent.ts）。二度目からは聞かないが、
+ * **ロゴを出す入り方でだけは毎回聞く**。ロゴを書き上げたところで断りが出るのが一続きの流れで、
+ * そこだけ抜くと筆を置いた先が宙に浮く。
+ */
+export type { AudioConsent }
+const INITIAL_CONSENT: AudioConsent | null = INITIAL_SPLASH === 'writing' ? null : loadConsent()
+export const audioConsentAtom = atom<AudioConsent | null>(INITIAL_CONSENT)
 
 // --- 設定 -------------------------------------------------------------------
 
 /** BGM 音量。控えめな既定値から始め、0 まで下げ切れる */
 export const bgmVolumeAtom = atom(0.35)
-export const mutedAtom = atom(false)
+/** 「静寂」で始めた（あるいは前回そう答えた）読者は伏せた状態から始める */
+export const mutedAtom = atom(INITIAL_CONSENT === 'silent')
 
 /** BGM が実際に鳴り始めたか。自動再生が弾かれた環境では最初の操作まで false のまま */
 export const audioStartedAtom = atom(false)
