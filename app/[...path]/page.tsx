@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { root, nodes, nodeById, ancestryOf } from '../../src/content/loader.ts'
 import { labelText } from '../../src/content/schema.ts'
+import { StaticDoc } from '../StaticDoc.tsx'
 
 /** 全ノードのパスをビルド時に列挙する。範囲外は 404（ハッシュ時代の「根へ倒す」はやめ、標準に寄せる） */
 export const dynamicParams = false
@@ -32,7 +33,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   }
 }
 
-/** L1 以深のノード。本体は layout の AppShell が描く。この page は metadata だけを担う */
-export default function Page() {
-  return null
+/**
+ * L1 以深のノード。絵と操作は layout の AppShell が描く。
+ * page が持つのは metadata と、GPU レイヤーの写しである隠し文書（大書・行き先）だけ。
+ */
+export default async function Page({ params }: Props) {
+  const { path } = await params
+  const node = nodeById(path[path.length - 1] ?? '')
+  return node ? <StaticDoc node={node} /> : null
 }

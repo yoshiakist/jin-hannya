@@ -24,8 +24,20 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="ja">
       <body>
-        <AppShell />
-        {children}
+        {/*
+          1 つのノード = 1 つの記事。見出し語・経文・行き先（page = StaticDoc。GPU レイヤーに
+          しか無いので隠しテキスト）と、読み・サマリー・本文（AppShell の中の DOM オーバーレイ）が
+          同じ `<article>` に入る。別々の入れ物にすると、可視の本文が見出しを持たない浮いた
+          断片になってしまう。
+          `.app` は position: fixed、隠しテキストは position: absolute なので、
+          包んでも流し込みには何も起きない（見た目は変わらない）。
+        */}
+        <main>
+          <article>
+            {children}
+            <AppShell />
+          </article>
+        </main>
       </body>
     </html>
   )

@@ -45,7 +45,8 @@ SSR 無し・全ルート SSG・静的ホスティング前提。`drei` は使�
 
 ```
 app/        layout.tsx(アプリ本体を全ルートで永続) AppShell.tsx(ssr:false の境界)
-            page.tsx / [...path]/page.tsx(metadata・generateStaticParams だけを担う空ページ)
+            page.tsx / [...path]/page.tsx(metadata・generateStaticParams と隠し文書だけのページ)
+            StaticDoc.tsx(読み上げ・索引に渡す隠しテキスト。見出し語・経文・行き先)
 src/
   scene/    Stage.tsx(Canvas+ティア訂正) Paper.tsx(L0格子) NodeStage.tsx(L1以降/3レイアウト)
             Splash.tsx(起動のロゴ。筆順で書く) Transition.tsx(遷移演出) Particles.tsx
@@ -74,6 +75,7 @@ assets/     svg/(筆文字127) pattern/circle.svg bgm/ sfx/ voice/(未収録)
 - **ランタイムで SVG を触らない。** メッシュ・粒子サンプル・グロー用の符号付き距離場はビルド時に `scripts/build-glyphs.ts` が前計算する。
 - 発光の滲みは**字ごとの距離場**（`createGlowMaterial`）で出す。板の中心から放射させると、どの字でも同じ丸い光になる。
 - `assets/svg/<字>_path.svg` は塗りではなく**筆順どおりに並んだ中心線**（サブパス 1 つ = 1 画）。字の在庫には数えず、ビルド時に筆順パラメータ場へ焼いて起動のロゴが引く。ロゴは**根を直接開いたときだけ**出し、書いているあいだ紙面は畳まず `paperOpacity` で伏せる（→ skill: `ink-visuals`）。
+- **1 ノード = 1 記事。`app/layout.tsx` の `<main><article>` が隠しテキストと可視のオーバーレイを一緒に包む**（`.app` は `position: fixed` なので包んでも見た目は変わらない）。GPU レイヤーの字は DOM に無いので、その写しを `app/StaticDoc.tsx` が `.visually-hidden` で置く —— 見出し語（`h1` = 大書・読み・梵語）・L0 の経文全文・行き先のリンクだけ。読み・サマリー・本文はオーバーレイが可視の DOM で出しているので**ここには書かない**（読み上げが二重になる）。
 - 用語を混ぜない: **深度** `L0/L1/L2…`（ユーザーの階層）と **性能ティア** `Tier 1(WebGPU)/2(WebGL2)/3(WebGL不可)`（描画能力）。「Tier」は性能の話にのみ使う。
 - 遷移は相を持つ FSM（`idle → hovered → zooming-in → focused → zooming-out`）。`zooming-*` の間は入力を殺す。
 - 演出は**潜ると戻るで非対称**。潜る = 非フォーカス字が散開・生存字はメッシュのまま連続移動／戻る = 現在字が再配置されつつ粒子がフェードインして凝集。逆再生にはしない。
