@@ -63,12 +63,15 @@ body {
   cursor: default;
 }
 
-/* ロゴを書いているあいだ（→ src/scene/Splash.tsx）。
-   面は暗闇のままなので、字も操作も出さない。ロゴが薄れ始めるとこの指定が外れ、
-   経文の滲み出しと同じ間でオーバーレイが現れる */
-.app.splashing .stage {
+/* ロゴが畳まれるまで、紙面には触らせない（→ src/scene/Splash.tsx）。
+   薄れているあいだも通さない。ロゴ越しに潜られると、書き上げたばかりの字がそのまま散る。
+   ロゴを飛ばすクリックは window で拾うので、ここで止めても効く */
+.app.splash-closed .stage {
   pointer-events: none;
 }
+
+/* ロゴを書いているあいだ。面は暗闇のままなので字も操作も出さない。
+   ロゴが薄れ始めるとこの指定が外れ、経文の滲み出しと同じ間でオーバーレイが現れる */
 
 .app.splashing .overlay {
   opacity: 0;

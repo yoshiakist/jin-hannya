@@ -146,15 +146,19 @@ export function Splash() {
     }
   }, [items, plane])
 
-  /** 演出の始まり（`performance.now()`）。最初のフレームで入れる */
-  const started = useRef(-1)
+  /**
+   * 演出の始まり（`performance.now()`）。最初のフレームで入れる。
+   * まだ始まっていない目印は `null`。負数を目印にすると、起動直後のスキップで
+   * 始まりが負に振れたときに未開始と見分けが付かず、書き直しになる
+   */
+  const started = useRef<number | null>(null)
   /** いま出している相。同じ値を毎フレーム書かないための控え */
   const phase = useRef<SplashPhase>('writing')
 
   // 触れられたら書き上がりへ飛ばす。読み終えた人を毎回 4 秒待たせない
   useEffect(() => {
     const skip = () => {
-      if (started.current < 0 || phase.current !== 'writing') return
+      if (started.current === null || phase.current !== 'writing') return
       started.current = performance.now() - fadeAt
     }
     window.addEventListener('pointerdown', skip)
@@ -167,7 +171,7 @@ export function Splash() {
 
   useFrame(() => {
     const now = performance.now()
-    if (started.current < 0) started.current = now
+    if (started.current === null) started.current = now
     const elapsed = now - started.current
 
     // 見えている高さ・幅（ワールド単位）。拡大率は起動直後でも確定している

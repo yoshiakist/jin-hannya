@@ -25,9 +25,12 @@ export function App() {
   const isRoot = useAtomValue(isRootAtom)
   const panX = useAtomValue(panXAtom)
   const bounds = useAtomValue(panBoundsAtom)
-  // ロゴを書いているあいだは面に触らせない。薄れ始めた時点で解禁し、
-  // オーバーレイは経文と同じ時間をかけて現れる（→ src/scene/Splash.tsx）
-  const splashing = useAtomValue(splashAtom) === 'writing'
+  // ロゴを書いているあいだ、面は暗闇のまま（`splashing`）。薄れ始めた時点でオーバーレイは
+  // 経文と同じ時間をかけて現れるが、**紙面のクリックはロゴが畳まれるまで通さない**（`closed`）。
+  // 薄れかけのロゴ越しに潜られると、書き上げたばかりの字がそのまま散る（→ src/scene/Splash.tsx）
+  const splash = useAtomValue(splashAtom)
+  const splashing = splash === 'writing'
+  const closed = splash !== 'done'
   const containerRef = useRef<HTMLDivElement>(null)
 
   useRouteSync()
@@ -44,7 +47,7 @@ export function App() {
   return (
     <div
       ref={containerRef}
-      className={`app tier-${tier} phase-${phase}${splashing ? ' splashing' : ''}`}
+      className={`app tier-${tier} phase-${phase}${splashing ? ' splashing' : ''}${closed ? ' splash-closed' : ''}`}
       // WebGPU レイヤーと DOM レイヤーが同じ変換を読むことで両者が同期する。
       // カメラの x をピクセルへ直したものを CSS 変数に流し、Tier 3 の紙面もこれで動く
       style={
