@@ -39,7 +39,7 @@ import {
 import { CELL_X, CELL_Y, GLYPH_SIZE, gridPosition } from '../world/paper.ts'
 import { isGestureClick } from '../world/pan.ts'
 import { navAtom, acceptsInputAtom, audioConsentAtom, splashAtom, visitedIndicesAtom } from '../nav/atoms.ts'
-import { SUTRA_INDEX_TO_NODE } from '../content/loader.ts'
+import { SUTRA_INDEX_TO_NODE, SUTRA_INDEX_TO_PAGE } from '../content/loader.ts'
 import { carriedNodeId } from './carry.ts'
 import { swayAt, swayPhase } from './sway.ts'
 
@@ -533,12 +533,18 @@ function CharInstances({
     }
     if (lit) visited.needsUpdate = true
 
-    // 持ち越される字（＝選んだ句）。相ではなく id の一致で決まるので毎フレーム引き直す
+    // 持ち越される字（＝選んだ句、あるいは経文の外の 1 枚が大書に借りている字）。
+    // 相ではなく id の一致で決まるので毎フレーム引き直す。
+    // 判定は Transition の `belongsTo` と同じ 2 つの表を見る —— 片方だけを見ると、
+    // Transition が動かしている字を紙面も並べて描いてしまい、出だしで二重に見える
     const carried = carriedNodeId()
     const persistArray = persist.array as Float32Array
     let switched = false
     group.indices.forEach((index, i) => {
-      const next = carried !== null && indexToNode[index] === carried ? 1 : 0
+      const next =
+        carried !== null && (indexToNode[index] === carried || SUTRA_INDEX_TO_PAGE[index] === carried)
+          ? 1
+          : 0
       if (persistArray[i] !== next) {
         persistArray[i] = next
         switched = true

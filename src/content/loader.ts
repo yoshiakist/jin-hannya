@@ -164,6 +164,25 @@ export const SUTRA_INDEX_TO_NODE: readonly (string | null)[] = (() => {
 })()
 
 /**
+ * 全文の文字インデックス → その字を大書へ持ち越す独立ページの id（`kind: page` の `range`）。
+ *
+ * **所有ではない。** 紙面での hover・入口・読破はどれも `SUTRA_INDEX_TO_NODE`（根の子＝句）が
+ * 決めており、この表はそこに一切触らない。ここが決めるのは遷移で持ち越される字だけで、
+ * `深般若` は経文の語のまとまりではない（`深` は `行` に掛かる）以上、
+ * 紙面で「一続きの語」として見せてはいけない —— 動きは文法の主張ではないので、
+ * リンクから出入りする一度きりの運動としてだけ使う。
+ */
+export const SUTRA_INDEX_TO_PAGE: readonly (string | null)[] = (() => {
+  const table: (string | null)[] = new Array(SUTRA_LENGTH).fill(null)
+  for (const node of nodes.values()) {
+    if (node.kind !== 'page' || !node.range) continue
+    const [start, end] = node.range
+    for (let i = start; i < end && i < table.length; i++) table[i] = node.id
+  }
+  return table
+})()
+
+/**
  * 大書の中の入口。`labelText(node.label)` と同じ順・同じ長さで、その字から潜れる子の id を返す
  * （どの子にも属さない字は null）。
  *

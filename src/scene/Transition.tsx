@@ -25,7 +25,14 @@ import {
   diagramCenterX,
 } from '../world/node-layout.ts'
 import { navAtom, tierAtom } from '../nav/atoms.ts'
-import { nodeById, root, childrenOf, headlineChildOwners, SUTRA_INDEX_TO_NODE } from '../content/loader.ts'
+import {
+  nodeById,
+  root,
+  childrenOf,
+  headlineChildOwners,
+  SUTRA_INDEX_TO_NODE,
+  SUTRA_INDEX_TO_PAGE,
+} from '../content/loader.ts'
 import { SUTRA_CHARS } from '../content/sutra.ts'
 import { gridPosition, GLYPH_SIZE } from '../world/paper.ts'
 import { swayAt, swayPhase } from './sway.ts'
@@ -85,8 +92,11 @@ function visibleGlyphs(node: GraphNode): StageGlyph[] {
         position: [x, y] as [number, number],
         size: GLYPH_SIZE,
         owner: SUTRA_INDEX_TO_NODE[index] ?? null,
-        // 紙面では句そのものが入口。owner と同じなので改めて持たない
-        enters: null,
+        // 紙面では句そのものが入口。owner と同じなので改めて持たない。
+        // 例外は経文の外の 1 枚（`kind: page`）で、その大書はここから借りた字でできている
+        // （深般若 ← 行深般若波羅蜜多時）。所有は句のままなので hover も入口も変わらず、
+        // 変わるのは左上のリンクで出入りするときに持ち越される字だけ（→ loader の SUTRA_INDEX_TO_PAGE）
+        enters: SUTRA_INDEX_TO_PAGE[index] ?? null,
         phase: swayPhase(index),
       }
     })

@@ -128,10 +128,13 @@ export const GraphNode = GraphNodeFields.refine(
       (!node.parent && !node.anchor && node.children.length === 0 && node.related.length === 0),
     { message: 'kind: page は木にも隣接にも繋がない（parent / anchor / children / related を持たない）' },
   )
-  .refine((node) => !(node.kind === 'page' && node.range), {
-    message: 'kind: page は経文に現れないので range を持たない',
-    path: ['range'],
-  })
+  /**
+   * 独立ページの `range` は**遷移で持ち越す字の指定**であって、経文の語の宣言ではない。
+   * 「深般若」はサイトの名を経文の一行（行深般若波羅蜜多時）から借りたもので、
+   * 語のまとまりではない（`深` は `行` に掛かる）。だから紙面では光らせず・入口にもせず、
+   * リンクから出入りするときにその 3 字が大書へ抜けていく動きにだけ使う（→ `Transition.tsx`）。
+   * 字が合っているか（`range` の指す字 = `label`）はビルド時検証が見る。
+   */
   .refine((node) => !(node.kind === 'page' && node.layout !== 'none'), {
     message: 'kind: page は子を持たないので layout: none にする',
     path: ['layout'],
