@@ -6,7 +6,7 @@
  * **組版は DOM、絵は GPU** に振り分ける（README「2 レイヤー合成」）。
  */
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useAtomValue, useSetAtom, useStore } from 'jotai'
 import {
@@ -33,12 +33,15 @@ import {
 import { VIEW_HEIGHT } from '../world/paper.ts'
 import { labelText, splitColumns, type GraphNode } from '../content/schema.ts'
 import { parseRuby } from '../content/ruby.ts'
+import { splitTcy } from '../content/tcy.ts'
+import { parseLinks } from '../content/links.ts'
 import { glyphUrl } from '../content/glyph-svg.ts'
 import { parseBlocks, startsWithBracket } from '../content/blocks.ts'
 import { APPEAR_DELAY_MS, RETURN_APPEAR_DELAY_MS, TRANSITION_MS } from '../scene/Transition.tsx'
 import { SpeakButton } from './SpeakButton.tsx'
 import { AudioControls } from './AudioControls.tsx'
 import { LeftArrow } from './LeftArrow.tsx'
+import { AboutLink } from './AboutLink.tsx'
 
 /**
  * ノードが変わるたびにテキスト群を差し替える。
@@ -108,6 +111,7 @@ export function Overlay() {
       }
     >
       <Breadcrumb />
+      <AboutLink />
       <div className="overlay__top">
         <SpeakButton />
         <AudioControls />
@@ -184,10 +188,22 @@ export function Overlay() {
               </p>
             )}
             {blocks.map((block, i) =>
-              block.type === 'list' ? (
+              block.type === 'heading' ? (
+                // 小見出しは独立ページだけが使う（→ content/blocks.ts）。
+                // 記事の見出しは h1 = 大書なので、本文の中はその下の階層に置く
+                <h2
+                  key={i}
+                  className={blockClass(
+                    'overlay__doc-heading',
+                    block.section && 'overlay__doc-section',
+                  )}
+                >
+                  {renderInline(block.text)}
+                </h2>
+              ) : block.type === 'list' ? (
                 <ul key={i} className={blockClass(block.section && 'overlay__doc-section')}>
                   {block.items.map((item, j) => (
-                    <li key={j}>{renderRuby(item)}</li>
+                    <li key={j}>{renderInline(item)}</li>
                   ))}
                 </ul>
               ) : (
@@ -198,7 +214,7 @@ export function Overlay() {
                     startsWithBracket(block.text) && 'overlay__doc-flush',
                   )}
                 >
-                  {renderRuby(block.text)}
+                  {renderInline(block.text)}
                 </p>
               ),
             )}
@@ -358,6 +374,32 @@ function hash(value: string): number {
 }
 
 /**
+ * 段落の中身を組む。外側から順に リンク → ルビ → 縦中横 と掛ける
+ * （`[字面](URL)` の字面にもルビと縦中横が効く）。
+ *
+ * 行き先は外部なので新しいタブで開く。読んでいた場所（潜ってきた深さ）を失わせないため。
+ * `rel` は新しいタブへ開くときの定石どおり付ける。
+ */
+function renderInline(paragraph: string) {
+  return parseLinks(paragraph).map((part, i) =>
+    typeof part === 'string' ? (
+      <Fragment key={i}>{renderRuby(part)}</Fragment>
+    ) : (
+      <a
+        key={i}
+        href={part.href}
+        target="_blank"
+        rel="noopener noreferrer"
+        // 本文を送るドラッグの離しぎわに届くクリックは捨てる（→ world/pan.ts）
+        onClick={(event) => isGestureClick() && event.preventDefault()}
+      >
+        {renderRuby(part.text)}
+      </a>
+    ),
+  )
+}
+
+/**
  * 段落の `菩薩《ぼさつ》` を `<ruby>` に組み替える。
  *
  * 縦組み（`writing-mode: vertical-rl`）でも `<ruby>` はブラウザが親文字の右に流してくれるので、
@@ -366,12 +408,25 @@ function hash(value: string): number {
 function renderRuby(paragraph: string) {
   return parseRuby(paragraph).map((part, i) =>
     typeof part === 'string' ? (
-      part
+      <Fragment key={i}>{renderTcy(part)}</Fragment>
     ) : (
       <ruby key={i}>
         {part.base}
         <rt>{part.ruby}</rt>
       </ruby>
+    ),
+  )
+}
+
+/** 縦組みの中の 1〜2 字のラテン字を立てる（→ src/content/tcy.ts） */
+function renderTcy(text: string) {
+  return splitTcy(text).map((run, i) =>
+    run.upright ? (
+      <span key={i} className="tcy">
+        {run.text}
+      </span>
+    ) : (
+      <Fragment key={i}>{run.text}</Fragment>
     ),
   )
 }

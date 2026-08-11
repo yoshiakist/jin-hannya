@@ -199,6 +199,10 @@ export function headlineChildOwners(node: GraphNode): (string | null)[] {
  * が、経路としては 1 つ深い位置に並ぶ。原稿の水準はアンカーに合わせる（→ skill: doc-writing）。
  */
 export function ancestryOf(node: GraphNode): GraphNode[] {
+  // 独立ページ（`kind: page`）は木の外に居るが、URL（`/about/`）も現在位置も
+  // 「根の隣に開いた 1 枚」として扱う。ここで根に繋ぐことで、戻り先と深度が他と同じ規則に乗る
+  if (node.kind === 'page') return [root, node]
+
   const path: GraphNode[] = [node]
   const seen = new Set([node.id])
   let current = node

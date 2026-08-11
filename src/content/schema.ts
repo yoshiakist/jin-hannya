@@ -8,8 +8,12 @@ import { z } from 'zod'
  * ランタイムのローダ（src/content/loader.ts）の双方がこれを使う。
  */
 
-/** ノードの種別。深度ではなく「何であるか」を表す */
-export const NodeKind = z.enum(['sutra', 'phrase', 'term'])
+/**
+ * ノードの種別。深度ではなく「何であるか」を表す。
+ * `page` だけは経文の外側にあるノード（このサイトについて 等）で、
+ * 木にも隣接にも繋がらないが、L1 と同じ画面文法・同じ遷移で読ませる。
+ */
+export const NodeKind = z.enum(['sutra', 'phrase', 'term', 'page'])
 export type NodeKind = z.infer<typeof NodeKind>
 
 /**
@@ -110,6 +114,26 @@ export const GraphNode = GraphNodeFields.refine(
   })
   .refine((node) => !(node.anchor && node.layout !== 'none'), {
     message: '隣接ノードは子の図を持たないので layout: none にする',
+    path: ['layout'],
+  })
+  /**
+   * 独立ページ（`kind: page`）は経文のグラフの外に居る。木にも隣接にも繋がず、
+   * 経文の字も指さない。位置づけは「根と並ぶもう 1 枚」で、深度は L1 と同じ扱いになる
+   * （経路は `ancestryOf` が根に繋ぐ）。ここで結線を禁じておかないと、
+   * 語の一覧や関連語句に紛れ込んで経文の読み筋を濁す。
+   */
+  .refine(
+    (node) =>
+      node.kind !== 'page' ||
+      (!node.parent && !node.anchor && node.children.length === 0 && node.related.length === 0),
+    { message: 'kind: page は木にも隣接にも繋がない（parent / anchor / children / related を持たない）' },
+  )
+  .refine((node) => !(node.kind === 'page' && node.range), {
+    message: 'kind: page は経文に現れないので range を持たない',
+    path: ['range'],
+  })
+  .refine((node) => !(node.kind === 'page' && node.layout !== 'none'), {
+    message: 'kind: page は子を持たないので layout: none にする',
     path: ['layout'],
   })
 export type GraphNode = z.infer<typeof GraphNode>

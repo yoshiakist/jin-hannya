@@ -61,6 +61,9 @@
 | 音の断り | ロゴを書き上げた（または飛ばされた）ところで、字の下に横組みで「本サイトはBGMが流れます」と承知／静寂を出す（`overlay/AudioConsent.tsx`）。答えが出るまでロゴは薄れず、経文の初出の時計（`revealTime`）も進まない。承知で BGM を開始、静寂では `AudioContext` も `<audio>` も作らない＝取得も始まらない（後からミュートを解けばそこで鳴り出す）。答えは `localStorage`（`jin-hannya:audio-consent:v1`）に残し、二度目からは出さない（ロゴを出す入り方でだけは毎回聞く）。右上のミュート切り替えも同じ記憶へ書く（伏せる = 静寂、戻す = 承知）。ロゴを持たない入り方（潜った先を直接開いた・Tier 3・`prefers-reduced-motion`）では中身が既に出来ているので、答えるまで暗幕（`.curtain`）で伏せ、答えたら 900ms で開ける。**画面での確認はこれから** |
 | L0 の初出の滲み出し | 起動時、経文の頭から末尾へ `REVEAL_SPREAD`（3 秒）ずらして現れ、字の中は左上から右下へ墨が回る（`revealMask`）。尺・縁の幅（`REVEAL_DURATION` / `REVEAL_EDGE` / `REVEAL_WOBBLE`）は画面で見て詰める前提の初期値で、動くところを見ていない |
 
+| このサイトについて（`/about/`） | 経文の外の 1 枚を `kind: page` のノードとして置き、L1 と同じ画面文法・同じ遷移で読ませる（`content/graph/about.yaml` / `content/docs/about.md`）。木にも隣接にも繋がず、経路だけ `ancestryOf` が根に繋ぐ。入口は L0 左上の固定リンク（`overlay/AboutLink.tsx`。素の `<a>` で、遷移は `useRouteSync` が拾う）と L0 の隠し文書の 1 本。1440x810 の headless で、大書・読み・サマリー・本文・小見出し・現在位置インジケータ・左右パン（ドラッグ 300px で `--node-pan-px` が追従）・`<title>` を確認 |
+| 原稿の小見出しと外部リンク | `##` を `h2`、`[字面](URL)` を新しいタブで開く `<a>` として組む（`content/blocks.ts` / `content/links.ts`）。**独立ページの原稿だけで使う**（→ skill: `doc-writing`）。行き先は `https` / `http` / `mailto` と相対パスだけを通す。縦組みの 1〜2 字のラテン字は縦中横で立てる（`content/tcy.ts`）。組版の間合い（見出しの前後アキ・下線の位置）は画面で見て詰める前提の初期値 |
+
 ## 実装済みだが未確認
 
 画面で確かめられていないもの。**動く保証をしていない。**

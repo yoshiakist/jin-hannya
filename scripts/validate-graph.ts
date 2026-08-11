@@ -203,7 +203,8 @@ if (roots.length === 1) {
     anchored.set(node.anchor, [...(anchored.get(node.anchor) ?? []), node.id])
   }
   const reachable = new Set<string>()
-  const stack = [roots[0]!.id]
+  // 独立ページ（`kind: page`）は木の外に居て、固定のナビゲーションから開く。それ自身が起点
+  const stack = [roots[0]!.id, ...[...nodes.values()].filter((n) => n.kind === 'page').map((n) => n.id)]
   while (stack.length > 0) {
     const id = stack.pop()!
     if (reachable.has(id)) continue

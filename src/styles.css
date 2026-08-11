@@ -269,6 +269,38 @@ body {
   color: var(--text-dim);
 }
 
+/* 小見出し（原稿の `##`）。独立ページだけが使う（→ src/content/blocks.ts）。
+   大書が h1 なので、ここは字を大きくして張り合わない。太さと字間の詰まりだけで見出しに見せ、
+   直前の段落とのあいだに一行アキを取る（`---` の切れ目と同じ間合い） */
+.overlay__doc h2 {
+  margin: 0 2em 1.1em 1em;
+  margin-block-start: 1lh;
+  font-size: 1.1em;
+  font-weight: 700;
+  letter-spacing: 0.25em;
+  color: var(--ink);
+}
+
+/* 本文の頭に来る見出しだけは、上の一行アキを取らない（本文の頭が下がって見える） */
+.overlay__doc h2:first-child {
+  margin-block-start: 0;
+}
+
+/* 本文中のリンク（原稿の `[字面](URL)`）。行き先は外部で、新しいタブへ開く。
+   潜る先（琥珀）と紛れないよう、平常は下線だけで示し、触れたときにも色は変えない。
+   縦組みでは下線が字の左に引かれるので、字間へ食い込ませないよう少し離す */
+.overlay__doc a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--text-dim);
+  text-underline-offset: 0.35em;
+  transition: text-decoration-color 0.3s ease;
+}
+
+.overlay__doc a:hover {
+  text-decoration-color: var(--ink);
+}
+
 /* 2 字のラテン字は縦中横で立てる。縦組みで寝かせると本文の中で目立ちすぎる */
 .tcy {
   text-combine-upright: all;
@@ -438,6 +470,32 @@ body {
   .related-term {
     animation: none;
   }
+}
+
+/* --- このサイトについて ----------------------------------------------------- */
+
+/* L0 の左上。インジケータ（`.breadcrumb`）と同じ角を使うが、出る深度が排他なので重ならない。
+   紙面の外側の案内なので、経文と同じ筆文字ではなく通常書体・小さめ・退いた色で置く */
+.about-link {
+  position: absolute;
+  top: 3dvh;
+  left: clamp(14px, 2.2vw, 30px);
+  z-index: 2;
+  font-family: var(--sans);
+  font-size: clamp(13px, 1.4dvh, 15px);
+}
+
+.about-link a {
+  color: var(--text-dim);
+  text-decoration: none;
+  letter-spacing: 0.2em;
+  white-space: nowrap;
+  /* 下線は引かず、hover で琥珀に寄せる（他の入口と同じ約束） */
+  transition: color 0.35s ease;
+}
+
+.about-link a:hover {
+  color: var(--focus);
 }
 
 /* --- 現在位置インジケータ --------------------------------------------------- */

@@ -25,7 +25,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const node = nodeById(path[path.length - 1] ?? '')
   if (!node) return {}
 
-  const title = `${labelText(node.label)}（${labelText(node.reading)}） — 深般若`
+  // 独立ページ（`kind: page`）の大書はサイト名そのものなので、読みを添えると題が二重になる
+  const title =
+    node.kind === 'page'
+      ? `${labelText(node.label)}について`
+      : `${labelText(node.label)}（${labelText(node.reading)}） — 深般若`
   return {
     title,
     description: node.summary,

@@ -16,7 +16,8 @@
  */
 
 import Link from 'next/link'
-import { childrenOf, relatedOf, ancestryOf, root } from '../src/content/loader.ts'
+import { childrenOf, relatedOf, ancestryOf, nodeById, root } from '../src/content/loader.ts'
+import { ABOUT_ID } from '../src/nav/about.ts'
 import { SUTRA_LINES } from '../src/content/sutra.ts'
 import { labelText, type GraphNode } from '../src/content/schema.ts'
 import { pathOf } from '../src/nav/url.ts'
@@ -26,6 +27,7 @@ export function StaticDoc({ node }: { node: GraphNode }) {
   const children = childrenOf(node)
   const related = relatedOf(node)
   const ancestry = ancestryOf(node).slice(0, -1)
+  const about = nodeById(ABOUT_ID)
 
   return (
     <div className="visually-hidden">
@@ -50,6 +52,10 @@ export function StaticDoc({ node }: { node: GraphNode }) {
           ))}
         </section>
       )}
+
+      {/* L0 の左上に据えたリンク（`overlay/AboutLink.tsx`）は ssr:false のオーバーレイの中に
+          あり、静的 HTML には焼かれない。クローラと読み上げのために行き先だけをここに置く */}
+      {isRoot && about && <NodeLinks label="サイト情報" nodes={[about]} />}
 
       <NodeLinks label="上の階層" nodes={ancestry} />
       <NodeLinks label={isRoot ? '句の一覧' : '構成要素'} nodes={children} />

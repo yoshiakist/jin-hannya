@@ -17,6 +17,15 @@ const BULLET = /^[-*]\s+/
  */
 const SECTION_BREAK = /^[-*_]{3,}$/
 
+/**
+ * 小見出し。`##` で始まる行。
+ *
+ * 経文の解説（`content/docs/*.md`）では使わない —— 語の解説は 1 本の筋で読ませるものなので、
+ * 途中で節に割ると読み下しが切れる。使うのは**独立ページ（`kind: page`）**のように、
+ * 並列した話題を 1 枚に収める原稿だけ。
+ */
+const HEADING = /^#{2,3}\s+(.+)$/
+
 /** 段落の行頭に来る括弧類。約物自身が 1 字ぶんの空きを持つので字下げは要らない */
 const OPENING_BRACKET = /^[（｛〈《【「『［〔〝]/
 
@@ -43,7 +52,12 @@ export interface List extends SectionHead {
   items: string[]
 }
 
-export type Block = Paragraph | List
+export interface Heading extends SectionHead {
+  type: 'heading'
+  text: string
+}
+
+export type Block = Paragraph | List | Heading
 
 /**
  * 本文をブロックの並びにする。
@@ -81,9 +95,13 @@ export function parseBlocks(body: string): Block[] {
     for (const line of chunk.split('\n')) {
       const text = line.trim()
       if (!text) continue
+      const heading = HEADING.exec(text)
       if (SECTION_BREAK.test(text)) {
         flush()
         pending = true
+      } else if (heading) {
+        flush()
+        push({ type: 'heading', text: heading[1]!.trim() })
       } else if (BULLET.test(text)) {
         if (lines.length) flush()
         bullets.push(text.replace(BULLET, ''))
