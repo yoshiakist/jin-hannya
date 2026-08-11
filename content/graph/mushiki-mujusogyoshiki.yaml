@@ -2,7 +2,8 @@ id: mushiki-mujusogyoshiki
 kind: phrase
 label: 無色無受想行識
 reading: むしき むじゅそうぎょうしき
-summary: （未執筆）
+summary: （空のうちにおいては）物や形は無く、受・想・行・識もまた無い。
 parent: zekokuchu-to-muishikikai
 layout: none
 range: [86, 93]
+related: [goun]
