@@ -223,29 +223,36 @@ const NODE_PAN_EPSILON = 1e-4
  *
  * カメラではなく atom を動かすのが要点で、GPU レイヤーの大書と DOM の本文が
  * **同じ値**を読む以上、両者に速度差が生まれない。App が 1 度だけ取り付ける。
+ *
+ * **行き先の値を購読してはいけない。** `useAtomValue` で受けると、ドラッグ中は指が動くたびに
+ * この effect が張り直され、そのつど `last` が今の時刻へ戻る。すると delta が実フレーム間隔
+ * （16ms）ではなく数 ms になり、追従係数が桁で小さくなるうえ、指の動いたフレームと動かなかった
+ * フレームで値が振れる —— 送りが遅れながら速さも一定しない（＝がくがく）。
+ * 起こすのは `store.sub` の側で行い、rAF のループと時計は effect の寿命のあいだ 1 本に保つ。
  */
 export function useNodePanSpring(): void {
   const store = useStore()
-  // 行き先が動いたらばねを起こす。値そのものはフレームごとに store から読む
-  const target = useAtomValue(nodePanTargetAtom)
-  // 遷移の戻しも起こす。行き先はどちらも 0 なので、これを見ないと動き出さないことがある
-  const flight = useAtomValue(nodePanFlightRaw)
 
   useEffect(() => {
     const settled = () =>
       Math.abs(store.get(nodePanTargetAtom) - store.get(nodePanXAtom)) < NODE_PAN_EPSILON
-    if (settled()) return
 
     let raf = 0
-    let last = performance.now()
+    /** 直前のフレームの時刻。0 は「いま起きたところ」で、その回は時間を進めない */
+    let last = 0
+
     const tick = (now: number) => {
+      raf = 0
       // 行き先も現在位置も毎フレーム読み直す。ノードが変わったときの戻し
       // （`settleNodePanAtom`）と競っても、取り残された 1 フレームが古い値を書き戻さない
-      if (settled()) return
+      if (settled()) {
+        last = 0
+        return
+      }
       // タブが戻ったときの巨大な delta で飛ばさないよう頭を抑える。
       // 下も抑える: rAF の時刻はフレームの開始時刻なので、直前に読んだ performance.now() より
       // 前になることがある。負の delta は補間係数を負にし、行き先と逆へ弾く
-      const delta = Math.max(0, Math.min(0.05, (now - last) / 1000))
+      const delta = last ? Math.max(0, Math.min(0.05, (now - last) / 1000)) : 0
       last = now
       const goal = store.get(nodePanTargetAtom)
       const current = store.get(nodePanXAtom)
@@ -261,12 +268,29 @@ export function useNodePanSpring(): void {
         next = current + (goal - current) * (1 - Math.exp(-delta * NODE_PAN_FOLLOW))
       }
       store.set(nodePanRaw, Math.abs(goal - next) < NODE_PAN_EPSILON ? goal : next)
-      if (settled()) return
+      if (settled()) {
+        last = 0
+        return
+      }
       raf = requestAnimationFrame(tick)
     }
-    raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
-  }, [store, target, flight])
+
+    // 眠っているときだけ起こす。走っている最中の呼び出しは何もしない（時計を切らないため）
+    const wake = () => {
+      if (raf || settled()) return
+      last = 0
+      raf = requestAnimationFrame(tick)
+    }
+
+    // 行き先が動いたら起こす。遷移の戻しも見る（行き先はどちらも 0 なので、
+    // これを見ないと `settleNodePanAtom` で動き出さないことがある）
+    const unsubscribe = [store.sub(nodePanTargetAtom, wake), store.sub(nodePanFlightRaw, wake)]
+    wake()
+    return () => {
+      if (raf) cancelAnimationFrame(raf)
+      for (const off of unsubscribe) off()
+    }
+  }, [store])
 }
 
 /** 画面 1px が何ワールド単位か。視野高が VIEW_HEIGHT / zoom に固定されているので高さから決まる */

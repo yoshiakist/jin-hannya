@@ -8,7 +8,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { useAtomValue, useSetAtom } from 'jotai'
+import { useAtomValue, useSetAtom, useStore } from 'jotai'
 import {
   currentNodeAtom,
   currentDocAtom,
@@ -77,19 +77,26 @@ export function Overlay() {
   // 関連語句は本文のさらに左。本文の幅も組版の結果なので実測して渡す
   const related = useMeasuredElement()
   const nav = useAtomValue(navAtom)
-  const nodePan = useNodePan(
+  const rootRef = useRef<HTMLDivElement>(null)
+  useNodePan(
+    rootRef,
     // 行き先が決まった時点でパンを戻す（遷移中は pendingId が行き先）
     nav.pendingId ?? nav.nodeId,
     [summary.element, body.element, related.element],
     [node, size, summary.width, body.width],
   )
+  // 本文の組み立ては原稿が変わったときだけ。オーバーレイは hover や相の変化でも
+  // 再レンダーされるので、そのたびに数千字を読み直すと重い
+  const blocks = useMemo(() => (doc ? parseBlocks(doc.body) : []), [doc])
 
   return (
     <div
+      ref={rootRef}
       className="overlay"
       // 大書は WebGPU レイヤーにあり DOM からは測れない。カメラと同じ式で出した
       // 画面右端からの距離を渡し、読み・サマリー・本文の x はこの 3 つから CSS が組む。
-      // パンのぶんはレイアウトを崩さないよう transform で足す（--node-pan-px）
+      // パンのぶん（--node-pan-px）はここに書かない。毎フレーム変わる値なので、
+      // React を通さず `useNodePan` が rootRef へ直に当てる
       style={
         {
           '--headline-right': `${insets.headlineRight}px`,
@@ -97,7 +104,6 @@ export function Overlay() {
           '--diagram-left': `${insets.diagramLeft}px`,
           '--summary-width': `${summary.width}px`,
           '--doc-width': `${body.width}px`,
-          '--node-pan-px': `${nodePan}px`,
         } as React.CSSProperties
       }
     >
@@ -177,7 +183,7 @@ export function Overlay() {
                 この解説は <span className="tcy">AI</span> が下書きしたまま、人手の監修を経ていない。
               </p>
             )}
-            {parseBlocks(doc.body).map((block, i) =>
+            {blocks.map((block, i) =>
               block.type === 'list' ? (
                 <ul key={i} className={blockClass(block.section && 'overlay__doc-section')}>
                   {block.items.map((item, j) => (
@@ -425,18 +431,40 @@ function useMeasuredElement(): Measured {
 }
 
 /**
- * L1 以降のパン。可動域を実測して atom へ入れ、いまのパン量を px で返す。
+ * L1 以降のパン。可動域を実測して atom へ入れ、いまのパン量を CSS 変数として当てる。
  *
  * 本文は画面より広くなりうる（README「画面外へはみ出してよい」）。左へはみ出したぶんだけ
  * ドラッグで送れるようにするのがここの役目で、可動域は本文とサマリーの左端から決まる。
  *
  * 位置は `getBoundingClientRect` ではなく `offsetLeft` で読む。パンは transform で当てるので、
  * rect で測ると送った量が次の可動域に混ざり、測り直すたびに可動域が動いてしまう。
+ *
+ * **パン量は React を通さない。** `useAtomValue` で受けるとばねの 1 フレームごとに
+ * オーバーレイ全体（縦組みの本文・motion・関連語句）が作り直され、原稿が長いノードほど
+ * ドラッグが重くなる。GPU 側のカメラと同じく store を直に購読し、
+ * 根の要素の `--node-pan-px` へ書くだけにする（読む値は同じ 1 つの atom のまま）。
  */
-function useNodePan(destinationId: string, elements: (HTMLElement | null)[], deps: unknown[]): number {
-  const pan = useAtomValue(nodePanXAtom)
+function useNodePan(
+  root: React.RefObject<HTMLElement | null>,
+  destinationId: string,
+  elements: (HTMLElement | null)[],
+  deps: unknown[],
+): void {
+  const store = useStore()
   const settle = useSetAtom(settleNodePanAtom)
   const setRange = useSetAtom(nodePanRangeAtom)
+
+  // ワールド単位のパン量を px へ直して当てる。左へ送る（負）と本文は右へ動く
+  useLayoutEffect(() => {
+    const apply = () => {
+      const element = root.current
+      if (!element) return
+      const px = (-store.get(nodePanXAtom) * (globalThis.innerHeight || 0)) / VIEW_HEIGHT
+      element.style.setProperty('--node-pan-px', `${px}px`)
+    }
+    apply()
+    return store.sub(nodePanXAtom, apply)
+  }, [store, root])
 
   // ノードが変わったら基準の構図へ戻す。行き先が決まった時点（遷移の始まり）で戻すので、
   // 演出中のカメラは最初から新しいノードの構図へ向かう。
@@ -459,9 +487,6 @@ function useNodePan(destinationId: string, elements: (HTMLElement | null)[], dep
     // なるため、要素の同一性を見ないと測り直しが起きず可動域が 0 のまま固まる。
     // 配列は毎回新しくなるので中身を並べる（要素の本数はレンダーによらず一定）
   }, [setRange, ...elements, ...deps])
-
-  // ワールド単位のパン量を px へ直す。左へ送る（負）と本文は右へ動く
-  return (-pan * (globalThis.innerHeight || 0)) / VIEW_HEIGHT
 }
 
 /**

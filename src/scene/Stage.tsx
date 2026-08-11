@@ -8,7 +8,7 @@
 
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { useAtomValue, useSetAtom } from 'jotai'
+import { useAtomValue, useSetAtom, useStore } from 'jotai'
 import * as THREE from 'three/webgpu'
 import { Paper } from './Paper.tsx'
 import { NodeStage } from './NodeStage.tsx'
@@ -45,7 +45,9 @@ function CameraRig() {
   const nav = useAtomValue(navAtom)
   const panX = useAtomValue(panXAtom)
   const panY = useAtomValue(panYAtom)
-  const nodePan = useAtomValue(nodePanXAtom)
+  // L1 以降の送りぶんは**購読しない**。ばねが毎フレーム書く値なので、購読するとフレームごとに
+  // この層が再レンダーされる。useFrame の中で store から読めば同じ値を同じ時刻に見られる
+  const store = useStore()
   const zoom = useAtomValue(zoomAtom)
   const halfWidth = useAtomValue(viewHalfWidthAtom)
   const setPan = useSetAtom(panXAtom)
@@ -115,7 +117,7 @@ function CameraRig() {
     // 遷移中は送りぶん（nodePan）を足さない。出発点（flight.x）が送っていた位置そのものなので、
     // 行き先へ ease で寄せるだけで送りぶんは自然に消える（`settleNodePanAtom` と同じ減り方）。
     // ここで足すと減っていく値をさらに ease で掛けることになり、道中で膨らんで戻る
-    target.current.x = toRoot ? panX : nodeX + (flight.current ? 0 : nodePan)
+    target.current.x = toRoot ? panX : nodeX + (flight.current ? 0 : store.get(nodePanXAtom))
     target.current.y = toRoot ? panY : 0
     target.current.zoom = toRoot ? zoom : 1
     // 縦 16 升ぶんが等倍でちょうど画面高に収まる。はみ出すのは横方向のみ
