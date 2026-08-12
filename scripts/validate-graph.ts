@@ -167,6 +167,18 @@ for (const node of nodes.values()) {
     warn(`${at}: audio "${node.audio}" が assets/voice/ に無い（未収録なら audio を外す）`)
   }
 
+  // 拍割り。収録音声の格子（1 字 1 拍）からずれる箇所の申告なので、音源と range が前提
+  if (node.audio_beats) {
+    if (!node.audio) fail(`${at}: audio_beats があるのに audio が無い（拍割りは収録音声の性質）`)
+    if (!node.range) {
+      fail(`${at}: audio_beats があるのに range が無い（拍は経文の字に割り当てる）`)
+    } else if (node.audio_beats.length !== node.range[1] - node.range[0]) {
+      fail(
+        `${at}: audio_beats が ${node.audio_beats.length} 字ぶんだが、range [${node.range[0]}, ${node.range[1]}) は ${node.range[1] - node.range[0]} 字`,
+      )
+    }
+  }
+
   // range
   if (node.range) {
     const [start, end] = node.range

@@ -39,6 +39,7 @@ const BGM_CEILING = 1 / 4
 
 // scripts/build-content.ts が assets/ から public/audio/ へコピーしたものを fetch する
 import { contentSource } from '../content/source.ts'
+import { sutraChain, BEAT_SEC, LEAD_SEC } from './recitation.ts'
 
 const BGM_URL = '/audio/bgm/sample_music_01.mp3'
 const WOOSH_URL = '/audio/sfx/woosh.wav'
@@ -61,6 +62,10 @@ interface AudioState {
   /** BGM を起こしている最中の約束。同時に呼ばれても一式しか作らせない */
   bgmStarting: Promise<boolean> | null
   currentVoice: AudioBufferSourceNode | null
+  /** 通し読経。t0 = 最初の字のアタック時刻（AudioContext の時計） */
+  recitation: { t0: number; pointer: number; sources: AudioBufferSourceNode[] } | null
+  /** 通し読経の世代。stop や再入で進め、await 明けの古い続きを黙らせる */
+  recitationGeneration: number
 }
 
 /**
@@ -89,6 +94,8 @@ const state: AudioState =
     bgmStop: null,
     bgmStarting: null,
     currentVoice: null,
+    recitation: null,
+    recitationGeneration: 0,
   })
 
 function ensureContext(): AudioContext {
@@ -364,6 +371,7 @@ export function playWoosh(): void {
 export async function playVoice(file: string, onEnded: () => void): Promise<void> {
   const ctx = ensureContext()
   stopVoice()
+  stopSutra()
 
   if (!VOICE_FILES.has(file)) throw new Error(`読み上げ音源が無い: assets/voice/${file}`)
   const url = `/audio/voice/${encodeURIComponent(file)}`
@@ -393,6 +401,118 @@ export function stopVoice(): void {
   source.onended = null
   source.stop()
   duck(false)
+}
+
+// --- 通し読経 ---------------------------------------------------------------
+
+/**
+ * 全文の通し再生。根の読み上げボタンから使う（→ src/overlay/SpeakButton.tsx）。
+ *
+ * 13 句の音源を AudioContext の時計でサンプル精度に並べる。**開始間隔は「拍 × 字数」**
+ * （各ファイル先頭の 0.3 秒は全員が同じだけ持つので相殺される。→ src/audio/recitation.ts）。
+ * setTimeout で繋ぐと背面タブの間引きで拍がずれるので、開始時刻は必ず `source.start(when)` に
+ * 絶対時刻で渡し、鳴り出したあとの JS には頼らない。
+ *
+ * 圧縮データは押した時点で全句ぶん先に取りにいく（計 5MB 弱。回線が細くても、
+ * デコード待ちの句が来る頃には届いている算段）。デコードは**手前の句が終わってから**にして、
+ * 展開済みバッファを同時に 2〜3 句ぶんまでに抑える（13 句を一度に展開すると 60MB 級になり、
+ * BGM で全長デコードを避けた判断と矛盾する。→ skill: audio-design）。
+ */
+export async function playSutra(onEnded: () => void): Promise<void> {
+  const ctx = ensureContext()
+  stopVoice()
+  stopSutra()
+
+  const chain = sutraChain()
+  if (!chain) throw new Error('通し読経の音源が揃っていない（→ src/audio/recitation.ts）')
+  const generation = ++state.recitationGeneration
+  const cancelled = () => generation !== state.recitationGeneration
+
+  // 取得の失敗は null に畳む。途中の句が取れなかったら通しごと止める（歯抜けで唱え続けない）
+  const fetches = chain.sources.map((source) =>
+    fetch(`/audio/voice/${encodeURIComponent(source.file)}`)
+      .then((r) => (r.ok ? r.arrayBuffer() : null))
+      .catch(() => null),
+  )
+
+  const first = await fetches[0]
+  if (cancelled()) return
+  if (!first) throw new Error(`読み上げ音源が取れない: ${chain.sources[0]!.file}`)
+  const firstBuffer = await ctx.decodeAudioData(first)
+  if (cancelled()) return
+
+  const recitation = { t0: ctx.currentTime + 0.05 + LEAD_SEC, pointer: 0, sources: [] as AudioBufferSourceNode[] }
+  state.recitation = recitation
+  duck(true)
+
+  /** 拍の目盛りに置いて鳴らす。返る約束は鳴り終わり（デコードの間引きにも使う） */
+  const startAt = (buffer: AudioBuffer, startBeat: number): Promise<void> => {
+    const source = ctx.createBufferSource()
+    source.buffer = buffer
+    source.connect(state.voiceGain!)
+    const when = recitation.t0 + startBeat * BEAT_SEC - LEAD_SEC
+    source.start(Math.max(when, ctx.currentTime))
+    recitation.sources.push(source)
+    return new Promise((resolve) => {
+      source.onended = () => resolve()
+    })
+  }
+
+  const ended: Promise<void>[] = [startAt(firstBuffer, 0)]
+  for (let k = 1; k < chain.sources.length; k++) {
+    // 2 つ手前が鳴り終わるまでデコードを待つ。次の句の頭までは丸 1 句ぶんの間があるので
+    // （手前の句の減衰の尾は次の句の頭に少し重なるだけ）、遅れて拍を外すことはない
+    if (k >= 2) await ended[k - 2]
+    const data = await fetches[k]
+    if (cancelled()) return
+    if (!data) {
+      console.warn(`[audio] 通し読経の途中の句が取れない: ${chain.sources[k]!.file}`)
+      stopSutra()
+      onEnded()
+      return
+    }
+    const buffer = await ctx.decodeAudioData(data)
+    if (cancelled()) return
+    ended.push(startAt(buffer, chain.sources[k]!.startBeat))
+  }
+
+  await Promise.all(ended)
+  if (cancelled()) return
+  state.recitation = null
+  duck(false)
+  onEnded()
+}
+
+export function stopSutra(): void {
+  const recitation = state.recitation
+  state.recitationGeneration++
+  if (!recitation) return
+  state.recitation = null
+  // `onended` は外さない。デコードの間引き（`await ended[k - 2]`）がこの発火を待っているので、
+  // 外すと止めた瞬間に playSutra の続きが宙吊りのまま残る。発火しても約束が解けるだけで、
+  // 世代が進んでいる以上その続きは何もせず降りる
+  for (const source of recitation.sources) source.stop()
+  duck(false)
+}
+
+/**
+ * 通しでいま唱えている字の全文インデックス。鳴っていなければ null。
+ * 表は時刻順なのでポインタを進めるだけでよい（再生のたびに 0 から作り直す）。
+ * ハイライトの駆動側（rAF）が毎フレーム呼ぶ想定で、割り当ても検索もしない。
+ */
+export function recitingIndex(): number | null {
+  const { recitation, context } = state
+  if (!recitation || !context) return null
+  const elapsed = context.currentTime - recitation.t0
+  if (elapsed < 0) return null
+  const events = sutraChain()!.events
+  while (
+    recitation.pointer + 1 < events.length &&
+    events[recitation.pointer + 1]!.atSec <= elapsed
+  ) {
+    recitation.pointer++
+  }
+  return events[recitation.pointer]!.index
 }
 
 function duck(on: boolean): void {

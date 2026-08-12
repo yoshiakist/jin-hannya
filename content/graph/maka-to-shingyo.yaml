@@ -7,3 +7,6 @@ parent: shingyo
 children: [maka, hannya-haramita, shingyo-hrdaya]
 layout: none
 range: [0, 10]
+audio: maka-to-shingyo.m4a
+# 題の結びの 1 字だけ 3 拍長く伸ばして唱えている（計 13 拍）
+audio_beats: [1, 1, 1, 1, 1, 1, 1, 1, 1, 4]

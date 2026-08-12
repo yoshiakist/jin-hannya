@@ -214,3 +214,10 @@ export const audioStartedAtom = atom(false)
 
 /** 読み上げ再生中のノード id。ボタンの状態表示に使う */
 export const speakingNodeIdAtom = atom<string | null>(null)
+
+/**
+ * 通し読経でいま唱えている字の全文インデックス。鳴っていなければ null。
+ * 音の時計（AudioContext）から引いた値を SpeakButton の rAF が字の変わり目でだけ書き、
+ * L0 の紙面（Paper / PaperFallback）が hover と同じ琥珀の経路で灯す。
+ */
+export const recitingIndexAtom = atom<number | null>(null)

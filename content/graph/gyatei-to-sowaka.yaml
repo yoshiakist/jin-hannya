@@ -6,3 +6,6 @@ summary: 経の結びに置かれた、となえるための言葉。行った�
 parent: shingyo
 layout: none
 range: [254, 272]
+audio: gyatei-to-sowaka.m4a
+# 真言は等拍で読まない。2個目の「はら」、「そわ」にあたる 2 字は伝統的に 2 字 1 拍（計 15 拍）
+audio_beats: [1, 1, 1, 1, 1, 1, 1, 1, 0.5, 0.5, 1, 1, 1, 1, 1, 0.5, 0.5, 1]

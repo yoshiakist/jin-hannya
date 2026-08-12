@@ -7,3 +7,4 @@ parent: shingyo
 children: [kanjizai-bosatsu, gyojin-to-ji, shoken-to-kaiku, doissaikuyaku]
 layout: none
 range: [10, 35]
+audio: kanjizai-to-issaikuyaku.m4a

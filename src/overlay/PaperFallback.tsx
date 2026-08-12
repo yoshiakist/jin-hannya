@@ -9,7 +9,7 @@
 import { useMemo } from 'react'
 import { useAtomValue, useSetAtom } from 'jotai'
 import { SUTRA_CHARS, cellOf } from '../content/sutra.ts'
-import { navAtom, acceptsInputAtom, completedIdsAtom } from '../nav/atoms.ts'
+import { navAtom, acceptsInputAtom, completedIdsAtom, recitingIndexAtom } from '../nav/atoms.ts'
 import { root, childrenOf } from '../content/loader.ts'
 import { isGestureClick } from '../world/pan.ts'
 
@@ -19,6 +19,8 @@ export function PaperFallback() {
   const hoveredId = useAtomValue(navAtom).hoveredId
   /** 読破した語。GPU レイヤーの青白（Paper.tsx）に対応する DOM 側の表現 */
   const completed = useAtomValue(completedIdsAtom)
+  /** 通し読経でいま唱えている字。hover と同じ琥珀（is-focused）で灯す */
+  const reciting = useAtomValue(recitingIndexAtom)
 
   /** 文字インデックス → 潜り先ノード id。Paper.tsx と同じ表を DOM 側でも引く */
   const indexToNode = useMemo(() => {
@@ -53,7 +55,7 @@ export function PaperFallback() {
             if (!cell) return <span className="paper-fallback__char" key={`gap-${r}`} />
             const { index, char } = cell
             const id = indexToNode[index]
-            const focused = id !== null && id === hoveredId
+            const focused = (id !== null && id === hoveredId) || index === reciting
             const visited = id != null && completed.has(id)
             return (
               <span

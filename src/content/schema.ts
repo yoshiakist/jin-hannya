@@ -94,6 +94,13 @@ const GraphNodeFields = z.object({
   /** assets/voice/ 配下のファイル名。未収録なら省略 */
   audio: z.string().optional(),
   /**
+   * 収録音声の字ごとの拍数。省略時は全字 1 拍（収録は BPM 108・1 字 1 拍の格子に乗せてある。
+   * → skill: audio-design）。等拍で読まない箇所 —— 引き伸ばし（題の結び）や
+   * 2 字 1 拍（真言の伝統的な読み）—— を持つノードだけが書く。
+   * 長さは `range` の字数と一致すること（ビルド時検証が見る）。
+   */
+  audio_beats: z.array(z.number().positive()).optional(),
+  /**
    * 原稿（`summary` と `docs/*.md`）が AI 生成のままで、人手の監修を経ていないこと。
    * 監修が入ったら**この行を消す**（false を書き足さない）。既定は false。
    */

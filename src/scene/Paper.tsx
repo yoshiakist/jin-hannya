@@ -38,7 +38,14 @@ import {
 } from './materials.ts'
 import { CELL_X, CELL_Y, GLYPH_SIZE, gridPosition } from '../world/paper.ts'
 import { isGestureClick } from '../world/pan.ts'
-import { navAtom, acceptsInputAtom, audioConsentAtom, splashAtom, visitedIndicesAtom } from '../nav/atoms.ts'
+import {
+  navAtom,
+  acceptsInputAtom,
+  audioConsentAtom,
+  splashAtom,
+  visitedIndicesAtom,
+  recitingIndexAtom,
+} from '../nav/atoms.ts'
 import { SUTRA_INDEX_TO_NODE, SUTRA_INDEX_TO_PAGE } from '../content/loader.ts'
 import { carriedNodeId } from './carry.ts'
 import { swayAt, swayPhase } from './sway.ts'
@@ -229,16 +236,19 @@ function paperSway(index: number, t: number): { x: number; y: number; rotation: 
 
 /**
  * フォーカスされた字の裏に焚く滲み。行き先は hover から引く。
+ * 通し読経中の字も同じ滲みで灯す（琥珀 = いま触れている一時的な状態。声が触れている字も同じ）。
  */
 function FocusGlow({ indexToNode, live }: { indexToNode: readonly (string | null)[]; live: boolean }) {
   const hoveredId = useAtomValue(navAtom).hoveredId
+  const reciting = useAtomValue(recitingIndexAtom)
   const targets = useMemo(() => {
     const array = new Float32Array(SUTRA_CHARS.length)
     if (hoveredId !== null) {
       for (let i = 0; i < array.length; i++) array[i] = indexToNode[i] === hoveredId ? 1 : 0
     }
+    if (reciting !== null && reciting < array.length) array[reciting] = 1
     return array
-  }, [hoveredId, indexToNode])
+  }, [hoveredId, reciting, indexToNode])
 
   return <SdfGlow targets={targets} strength={GLOW_STRENGTH} live={live} />
 }
@@ -426,6 +436,8 @@ function CharInstances({
   const meshRef = useRef<InstancedMesh>(null)
   const dummy = useMemo(() => new Object3D(), [])
   const nav = useAtomValue(navAtom)
+  /** 通し読経でいま唱えている字。hover と同じ琥珀で灯す */
+  const reciting = useAtomValue(recitingIndexAtom)
 
   /**
    * 0 = 通常、1 = フォーカス。hover では行き先だけを書き、実際の値は
@@ -490,12 +502,14 @@ function CharInstances({
   // シェーダは紙面で 1 本を共有する（字ごとに組み直さない）
   const material = paperInk()
 
-  // hover の変化そのものは変わったときに 1 度だけ拾い、補間はフレーム側に任せる
+  // hover の変化そのものは変わったときに 1 度だけ拾い、補間はフレーム側に任せる。
+  // 読経の字も同じ経路（変わるのは 1 拍に 1 度で、hover の移動より粗い）
   useEffect(() => {
     group.indices.forEach((index, i) => {
-      focusTarget[i] = nav.hoveredId !== null && indexToNode[index] === nav.hoveredId ? 1 : 0
+      focusTarget[i] =
+        (nav.hoveredId !== null && indexToNode[index] === nav.hoveredId) || index === reciting ? 1 : 0
     })
-  }, [nav.hoveredId, group.indices, indexToNode, focusTarget])
+  }, [nav.hoveredId, reciting, group.indices, indexToNode, focusTarget])
 
   // 読破は L1 以降で増えるので、戻ってきたときに 1 度だけ拾えばよい
   useEffect(() => {
