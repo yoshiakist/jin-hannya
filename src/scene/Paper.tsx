@@ -59,6 +59,13 @@ const GLOW_STRENGTH = 0.5
  */
 const VISITED_GLOW_STRENGTH = 0.38
 
+/**
+ * 読経中の字の寄せ（秒）。hover の `FOCUS_FADE`（0.4s）だと発声のアタックから
+ * 満点灯まで半拍近く遅れて聴こえとずれる。**速いのは上がりだけ** —— 拍が次の字へ
+ * 移った字はもう読経中ではないので、下がりは従来の寄せに戻って尾を引く。
+ */
+const RECITE_FADE = 0.2
+
 interface CharGroup {
   char: string
   /** この字が現れる全文インデックス */
@@ -250,7 +257,7 @@ function FocusGlow({ indexToNode, live }: { indexToNode: readonly (string | null
     return array
   }, [hoveredId, reciting, indexToNode])
 
-  return <SdfGlow targets={targets} strength={GLOW_STRENGTH} live={live} />
+  return <SdfGlow targets={targets} strength={GLOW_STRENGTH} reciting={reciting} live={live} />
 }
 
 /**
@@ -274,11 +281,14 @@ function SdfGlow({
   targets,
   color,
   strength,
+  reciting = null,
   live,
 }: {
   targets: Float32Array
   color?: Color
   strength: number
+  /** 読経中の字の全文インデックス。その字だけ速い寄せ（`RECITE_FADE`）で上がる */
+  reciting?: number | null
   live: boolean
 }) {
   const meshRef = useRef<InstancedMesh>(null)
@@ -335,7 +345,7 @@ function SdfGlow({
     const array = focus.array as Float32Array
     let moved = false
     for (let i = 0; i < count; i++) {
-      const next = approach(array[i]!, targets[i] ?? 0, delta)
+      const next = approach(array[i]!, targets[i] ?? 0, delta, i === reciting ? RECITE_FADE : undefined)
       if (next !== array[i]) {
         array[i] = next
         moved = true
@@ -523,11 +533,17 @@ function CharInstances({
     if (!mesh || !live) return
     const t = clock.elapsedTime
 
-    // フォーカス量を行き先へ寄せる。全インスタンスが行き先に着いていれば転送を省く
+    // フォーカス量を行き先へ寄せる。全インスタンスが行き先に着いていれば転送を省く。
+    // 読経中の字だけ速い寄せで上がる（滲みの側 = SdfGlow と同じ扱い）
     const array = focus.array as Float32Array
     let moved = false
     for (let i = 0; i < array.length; i++) {
-      const next = approach(array[i]!, focusTarget[i]!, delta)
+      const next = approach(
+        array[i]!,
+        focusTarget[i]!,
+        delta,
+        group.indices[i] === reciting ? RECITE_FADE : undefined,
+      )
       if (next !== array[i]) {
         array[i] = next
         moved = true
