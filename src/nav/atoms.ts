@@ -204,8 +204,8 @@ export const audioConsentAtom = atom<AudioConsent | null>(INITIAL_CONSENT)
 
 // --- 設定 -------------------------------------------------------------------
 
-/** BGM 音量。控えめな既定値から始め、0 まで下げ切れる */
-export const bgmVolumeAtom = atom(0.35)
+/** 音量スライダの値（0〜1）。BGM と読み上げ双方の上限ゲインへ写す。控えめな既定値から始め、0 まで下げ切れる */
+export const volumeAtom = atom(0.35)
 /** 「静寂」で始めた（あるいは前回そう答えた）読者は伏せた状態から始める */
 export const mutedAtom = atom(INITIAL_CONSENT === 'silent')
 

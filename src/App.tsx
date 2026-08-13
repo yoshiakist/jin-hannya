@@ -11,7 +11,7 @@ import {
   phaseAtom,
   isRootAtom,
   audioStartedAtom,
-  bgmVolumeAtom,
+  volumeAtom,
   mutedAtom,
   currentNodeAtom,
   markVisitedAtom,
@@ -94,7 +94,7 @@ export function App() {
  */
 function useAutoStartAudio(target: React.RefObject<HTMLElement | null>, enabled: boolean): void {
   const setStarted = useSetAtom(audioStartedAtom)
-  const volume = useAtomValue(bgmVolumeAtom)
+  const volume = useAtomValue(volumeAtom)
   const muted = useAtomValue(mutedAtom)
   const settingsRef = useRef({ volume, muted })
   settingsRef.current = { volume, muted }

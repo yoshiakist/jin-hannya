@@ -37,6 +37,12 @@ const DUCK_GAIN = 0.45
  */
 const BGM_CEILING = 1 / 4
 
+/**
+ * 読み上げの上限ゲイン。同じスライダの 0〜1 をこの範囲へ写す。
+ * 主役なので BGM より高い天井を持つが、振り切っても素材そのままの音量では出さない。
+ */
+const VOICE_CEILING = 2 / 3
+
 // scripts/build-content.ts が assets/ から public/audio/ へコピーしたものを fetch する
 import { contentSource } from '../content/source.ts'
 import { sutraChain, BEAT_SEC, LEAD_SEC } from './recitation.ts'
@@ -55,6 +61,11 @@ interface AudioState {
   duckGain: GainNode | null
   sfxGain: GainNode | null
   voiceGain: GainNode | null
+  /**
+   * スライダの最新値（0〜1）。コンテキストより先に届いた値をここに控え、
+   * 読み上げボタンが先にコンテキストを起こす経路でも同じ値を写せるようにする
+   */
+  volume: number | null
   wooshBuffer: AudioBuffer | null
   wooshLoading: boolean
   activeWooshes: number
@@ -88,6 +99,7 @@ const state: AudioState =
     duckGain: null,
     sfxGain: null,
     voiceGain: null,
+    volume: null,
     wooshBuffer: null,
     wooshLoading: false,
     activeWooshes: 0,
@@ -121,6 +133,8 @@ function ensureContext(): AudioContext {
   voiceGain.connect(master)
   state.voiceGain = voiceGain
 
+  applyVolume()
+
   return context
 }
 
@@ -136,7 +150,7 @@ export async function startAudio(volume: number, muted: boolean): Promise<boolea
     // 自動再生制限下では reject する。ここで落とさず、状態を見て判断する
     await ctx.resume().catch(() => {})
   }
-  setBgmVolume(volume)
+  setVolume(volume)
   setMuted(muted)
   if (ctx.state !== 'running') return false
 
@@ -334,12 +348,21 @@ function startStreamingBgm(ctx: AudioContext): { stop: () => void; ready: Promis
   }
 }
 
-/** volume は UI の 0〜1。実ゲインは BGM_CEILING を上限に写した値になる */
-export function setBgmVolume(volume: number): void {
-  const { bgmGain, context } = state
-  if (!bgmGain || !context) return
-  const gain = Math.max(0, Math.min(1, volume)) * BGM_CEILING
-  bgmGain.gain.setTargetAtTime(gain, context.currentTime, 0.08)
+/**
+ * volume は UI の 0〜1。スライダは 1 本で、BGM と読み上げそれぞれの上限ゲイン
+ * （BGM_CEILING / VOICE_CEILING）へ写す。コンテキストがまだ無くても値は控えられ、
+ * 起きたとき（startAudio か読み上げ）に反映される。
+ */
+export function setVolume(volume: number): void {
+  state.volume = Math.max(0, Math.min(1, volume))
+  applyVolume()
+}
+
+function applyVolume(): void {
+  const { bgmGain, voiceGain, context, volume } = state
+  if (!context || volume === null) return
+  bgmGain!.gain.setTargetAtTime(volume * BGM_CEILING, context.currentTime, 0.08)
+  voiceGain!.gain.setTargetAtTime(volume * VOICE_CEILING, context.currentTime, 0.08)
 }
 
 export function setMuted(muted: boolean): void {

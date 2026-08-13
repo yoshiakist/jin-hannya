@@ -1,5 +1,6 @@
 /**
- * BGM の音量・ミュート。
+ * 音量・ミュート。スライダは 1 本で、BGM と読み上げをそれぞれの上限ゲインへ写す
+ * （→ src/audio/index.ts の BGM_CEILING / VOICE_CEILING）。
  * 音がノイズにならないことが最優先の制約なので、**ユーザーが下げ切れる**ことを保証する。
  *
  * ミュートの切り替えは、起動時の断り（overlay/AudioConsent.tsx）への答えを言い直したものとして
@@ -8,12 +9,12 @@
 
 import { useAtom, useSetAtom } from 'jotai'
 import { useEffect } from 'react'
-import { audioConsentAtom, bgmVolumeAtom, mutedAtom } from '../nav/atoms.ts'
-import { setBgmVolume, setMuted } from '../audio/index.ts'
+import { audioConsentAtom, volumeAtom, mutedAtom } from '../nav/atoms.ts'
+import { setVolume, setMuted } from '../audio/index.ts'
 import { saveConsent } from '../audio/consent.ts'
 
 export function AudioControls() {
-  const [volume, setVolume] = useAtom(bgmVolumeAtom)
+  const [volume, setVolumeState] = useAtom(volumeAtom)
   const [muted, setMutedState] = useAtom(mutedAtom)
   const setConsent = useSetAtom(audioConsentAtom)
 
@@ -27,8 +28,8 @@ export function AudioControls() {
   }
 
   // 音が始まる前から出しておく（自動再生が弾かれた環境でも操作の在り処が判る）。
-  // 開始前の setBgmVolume / setMuted は無害な空振りで、値は startAudio が改めて反映する
-  useEffect(() => setBgmVolume(volume), [volume])
+  // 開始前の setVolume は値を控えるだけ、setMuted は無害な空振りで、AudioContext が起きたときに反映される
+  useEffect(() => setVolume(volume), [volume])
   useEffect(() => setMuted(muted), [muted])
 
   return (
@@ -48,8 +49,8 @@ export function AudioControls() {
         max={1}
         step={0.01}
         value={volume}
-        onChange={(event) => setVolume(Number(event.target.value))}
-        aria-label="BGM の音量"
+        onChange={(event) => setVolumeState(Number(event.target.value))}
+        aria-label="音量"
         disabled={muted}
       />
     </div>
