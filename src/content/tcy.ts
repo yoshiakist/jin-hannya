@@ -11,8 +11,15 @@
 /** 立てる上限の字数。これを超える並びは倒したまま組む */
 const MAX_UPRIGHT = 2
 
-/** ラテン字・数字の並び */
-const LATIN_RUN = /[A-Za-z0-9]+/gu
+/**
+ * ラテン字・数字の並び。1 語を 1 つの並びとして掴むため、ダイアクリティカルマーク付きの
+ * ラテン字（`vijñāna` の `ñ` `ā`）と、語の中の `.` `-`（`Next.js` `BY-NC-ND`）も並びに含める。
+ * ASCII だけで掴むと語がそこで切れ、`vijñāna` の末尾 `na` のような断片だけが立ってしまう。
+ */
+const LATIN_RUN = /[\p{sc=Latin}\p{Nd}\p{M}]+(?:[.-][\p{sc=Latin}\p{Nd}\p{M}]+)*/gu
+
+/** 立てる並び。長い語の判定は LATIN_RUN が担うので、ここは素の英数字だけ見ればよい */
+const UPRIGHT_RUN = /^[A-Za-z0-9]+$/
 
 export interface TcyRun {
   text: string
@@ -25,7 +32,7 @@ export function splitTcy(text: string): TcyRun[] {
   const runs: TcyRun[] = []
   let at = 0
   for (const match of text.matchAll(LATIN_RUN)) {
-    if (match[0].length > MAX_UPRIGHT) continue
+    if (match[0].length > MAX_UPRIGHT || !UPRIGHT_RUN.test(match[0])) continue
     if (match.index > at) runs.push({ text: text.slice(at, match.index), upright: false })
     runs.push({ text: match[0], upright: true })
     at = match.index + match[0].length
